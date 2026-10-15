@@ -111,7 +111,12 @@ router.post('/verify', isWorker, upload.single('idImage'), async (req, res) => {
 
     // Guard: reject images that produce too little text (blank / unreadable)
     if (lowerText.length < MIN_TEXT_LENGTH) {
-      await User.findByIdAndUpdate(req.user.id, { isVerified: false });
+      await User.findByIdAndUpdate(req.user.id, {
+        isVerified: false,
+        verificationStatus: 'rejected',
+        ocrExtractedText: text || 'Unreadable document',
+        rejectionReason: 'The image is too blurry or unreadable.',
+      });
       return res.status(200).json({
         verified: false,
         isVerified: false,
@@ -122,20 +127,27 @@ router.post('/verify', isWorker, upload.single('idImage'), async (req, res) => {
 
     const score   = scoreText(lowerText);
     const matched = score >= MIN_HITS;
+    const vStatus = matched ? 'verified' : 'pending';
 
     // Update user in DB
     const user = await User.findByIdAndUpdate(
       req.user.id,
-      { isVerified: matched },
+      {
+        isVerified: matched,
+        verificationStatus: vStatus,
+        ocrExtractedText: text,
+      },
       { new: true }
     );
 
     return res.status(200).json({
       verified: matched,
       isVerified: user.isVerified,
+      verificationStatus: user.verificationStatus,
+      ocrExtractedText: text,
       message: matched
         ? 'ID verified successfully! Your profile is now marked as verified.'
-        : 'We could not detect government ID keywords in this document. Please upload a clearer government-issued ID.',
+        : 'ID submitted for manual admin review. We could not auto-verify government keywords.',
     });
   } catch (err) {
     return res.status(500).json({ message: 'OCR processing failed.', error: err.message });

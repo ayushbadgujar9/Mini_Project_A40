@@ -3,10 +3,11 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 
-const authRoutes   = require('./routes/auth');
-const workerRoutes = require('./routes/worker');
-const adminRoutes  = require('./routes/admin');
-const jobRoutes    = require('./routes/jobs');
+const authRoutes        = require('./routes/auth');
+const workerRoutes      = require('./routes/worker');
+const adminRoutes       = require('./routes/admin');
+const jobRoutes         = require('./routes/jobs');
+const applicationRoutes = require('./routes/applicationRoutes');
 
 const app = express();
 
@@ -18,10 +19,11 @@ app.use(cors({
 app.use(express.json());
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
-app.use('/api/auth',   authRoutes);
-app.use('/api/worker', workerRoutes);
-app.use('/api/admin',  adminRoutes);
-app.use('/api/jobs',   jobRoutes);
+app.use('/api/auth',         authRoutes);
+app.use('/api/worker',       workerRoutes);
+app.use('/api/admin',        adminRoutes);
+app.use('/api/jobs',         jobRoutes);
+app.use('/api/applications', applicationRoutes);
 
 // Serve uploaded ID images statically (for dev; use CDN/S3 in production)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));

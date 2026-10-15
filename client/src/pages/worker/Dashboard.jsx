@@ -25,6 +25,9 @@ export default function WorkerDashboard() {
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
 
+  // ── Active tab ──────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState('jobs'); // 'jobs' | 'applications'
+
   // ── Profile ────────────────────────────────────────────────────────────────
   const [profile,        setProfile]        = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -36,6 +39,11 @@ export default function WorkerDashboard() {
   const [jobs,        setJobs]        = useState([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [skillFilter, setSkillFilter] = useState('all');
+
+  // ── My applications ────────────────────────────────────────────────────────
+  const [applications,    setApplications]    = useState([]);
+  const [appsLoading,     setAppsLoading]     = useState(false);
+  const [appliedJobIds,   setAppliedJobIds]   = useState(new Set());
 
   // ── Fetch profile ──────────────────────────────────────────────────────────
   const fetchProfile = useCallback(() => {
@@ -76,8 +84,29 @@ export default function WorkerDashboard() {
     }
   }, [token]);
 
+  // ── Fetch my applications ─────────────────────────────────────────────────
+  const fetchApplications = useCallback(async () => {
+    if (!token) return;
+    setAppsLoading(true);
+    try {
+      const res = await fetch(`${API}/api/applications/my-applications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      const apps = data.applications || [];
+      setApplications(apps);
+      // Build set of already-applied job IDs
+      setAppliedJobIds(new Set(apps.map((a) => a.job?._id).filter(Boolean)));
+    } catch {
+      setApplications([]);
+    } finally {
+      setAppsLoading(false);
+    }
+  }, [token]);
+
 
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
+  useEffect(() => { fetchApplications(); }, [fetchApplications]);
 
   const handleLogout = () => { logout(); navigate('/login', { replace: true }); };
 
@@ -117,6 +146,12 @@ export default function WorkerDashboard() {
         ? Math.floor((Date.now() - new Date(profile.lastWorkedDate).getTime()) / (1000 * 60 * 60 * 24))
         : null };
   })();
+
+  // Helper to get application status for a specific job
+  const getAppStatusForJob = (jobId) => {
+    const app = applications.find((a) => a.job?._id === jobId);
+    return app?.status || null;
+  };
 
   return (
     <div className="dashboard-page">
@@ -173,7 +208,7 @@ export default function WorkerDashboard() {
         {/* Stat cards */}
         <div style={{ marginTop: '2rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
           <StatCard icon="💼" label="Available Jobs" value={jobsLoading ? '…' : jobs.length} color="var(--clr-worker)" />
-          <StatCard icon="📋" label="My Applications" value="3" color="var(--clr-secondary)" />
+          <StatCard icon="📋" label="My Applications" value={appsLoading ? '…' : applications.length} color="var(--clr-secondary)" />
           <StatCard
             icon="⭐"
             label="Profile Score"
@@ -308,76 +343,214 @@ export default function WorkerDashboard() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          JOB FEED
+          TAB SWITCHER — Jobs / My Applications
       ══════════════════════════════════════════════════════════════════ */}
-      <div className="job-feed-section">
-        {/* Feed header */}
-        <div className="job-feed-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div className="section-icon" style={{ width: 36, height: 36, fontSize: '1rem' }}>🔍</div>
-            <div>
-              <div className="section-title">Open Job Listings</div>
-              <div className="section-subtitle">
-                {jobsLoading ? 'Loading…' : `${filteredJobs.length} job${filteredJobs.length !== 1 ? 's' : ''} available`}
-              </div>
-            </div>
-          </div>
+      <div style={{ maxWidth: 900, margin: '0 auto 1.5rem', padding: '0 1rem' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          background: 'var(--clr-bg-mid, #f1f5f9)',
+          borderRadius: 'var(--radius-md, 12px)',
+          padding: '5px',
+          border: '1px solid var(--clr-border, #e2e8f0)',
+        }}>
           <button
-            id="refresh-jobs-btn"
-            className="btn-refresh"
-            onClick={() => { setJobsLoading(true); fetchJobs(); }}
-            disabled={jobsLoading}
+            id="tab-jobs-btn"
+            onClick={() => setActiveTab('jobs')}
+            style={{
+              padding: '0.7rem 1rem',
+              border: 'none',
+              borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
+              fontWeight: 700,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.45rem',
+              transition: 'all 250ms',
+              background: activeTab === 'jobs' ? 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))' : 'transparent',
+              color: activeTab === 'jobs' ? '#fff' : 'var(--clr-text-dim, #64748b)',
+              boxShadow: activeTab === 'jobs' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
+            }}
           >
-            {jobsLoading ? '…' : '↻ Refresh'}
+            🔍 Open Jobs
+          </button>
+          <button
+            id="tab-applications-btn"
+            onClick={() => setActiveTab('applications')}
+            style={{
+              padding: '0.7rem 1rem',
+              border: 'none',
+              borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
+              fontWeight: 700,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.45rem',
+              transition: 'all 250ms',
+              background: activeTab === 'applications' ? 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))' : 'transparent',
+              color: activeTab === 'applications' ? '#fff' : 'var(--clr-text-dim, #64748b)',
+              boxShadow: activeTab === 'applications' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
+            }}
+          >
+            📋 My Applications {applications.length > 0 && <span style={{
+              background: 'rgba(255,255,255,0.25)',
+              borderRadius: '9999px',
+              padding: '0.1rem 0.5rem',
+              fontSize: '0.75rem',
+            }}>{applications.length}</span>}
           </button>
         </div>
-
-        {/* Skill filter chips */}
-        {!jobsLoading && feedSkillIds.length > 0 && (
-          <div className="feed-filter-bar">
-            <button
-              className={`feed-filter-chip ${skillFilter === 'all' ? 'active' : ''}`}
-              onClick={() => setSkillFilter('all')}
-            >
-              All
-            </button>
-            {feedSkillIds.map((sid) => {
-              const s = SKILLS.find((sk) => sk.id === sid);
-              return s ? (
-                <button
-                  key={sid}
-                  className={`feed-filter-chip ${skillFilter === sid ? 'active' : ''}`}
-                  onClick={() => setSkillFilter(sid)}
-                >
-                  {s.icon} {s.label}
-                </button>
-              ) : null;
-            })}
-          </div>
-        )}
-
-        {/* Content */}
-        {jobsLoading ? (
-          <div className="job-feed">
-            {[1, 2, 3].map((n) => <div key={n} className="shimmer-card" />)}
-          </div>
-        ) : filteredJobs.length === 0 ? (
-          <div className="jobs-empty">
-            <div className="jobs-empty-icon">{skillFilter !== 'all' ? '🔎' : '📭'}</div>
-            <p>
-              {skillFilter !== 'all'
-                ? `No open jobs for "${SKILLS.find(s => s.id === skillFilter)?.label}" right now.`
-                : 'No open jobs at the moment. Check back soon!'}
-            </p>
-          </div>
-        ) : (
-          <div className="job-feed">
-            {filteredJobs.map((job, i) => (
-              <JobCard key={job._id} job={job} index={i} fairnessScore={job.fairnessScore} isSkillMatch={job.isSkillMatch} />
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          TAB: OPEN JOBS
+      ══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'jobs' && (
+        <div className="job-feed-section">
+          {/* Feed header */}
+          <div className="job-feed-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div className="section-icon" style={{ width: 36, height: 36, fontSize: '1rem' }}>🔍</div>
+              <div>
+                <div className="section-title">Open Job Listings</div>
+                <div className="section-subtitle">
+                  {jobsLoading ? 'Loading…' : `${filteredJobs.length} job${filteredJobs.length !== 1 ? 's' : ''} available`}
+                </div>
+              </div>
+            </div>
+            <button
+              id="refresh-jobs-btn"
+              className="btn-refresh"
+              onClick={() => { setJobsLoading(true); fetchJobs(); }}
+              disabled={jobsLoading}
+            >
+              {jobsLoading ? '…' : '↻ Refresh'}
+            </button>
+          </div>
+
+          {/* Skill filter chips */}
+          {!jobsLoading && feedSkillIds.length > 0 && (
+            <div className="feed-filter-bar">
+              <button
+                className={`feed-filter-chip ${skillFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setSkillFilter('all')}
+              >
+                All
+              </button>
+              {feedSkillIds.map((sid) => {
+                const s = SKILLS.find((sk) => sk.id === sid);
+                return s ? (
+                  <button
+                    key={sid}
+                    className={`feed-filter-chip ${skillFilter === sid ? 'active' : ''}`}
+                    onClick={() => setSkillFilter(sid)}
+                  >
+                    {s.icon} {s.label}
+                  </button>
+                ) : null;
+              })}
+            </div>
+          )}
+
+          {/* Content */}
+          {jobsLoading ? (
+            <div className="job-feed">
+              {[1, 2, 3].map((n) => <div key={n} className="shimmer-card" />)}
+            </div>
+          ) : filteredJobs.length === 0 ? (
+            <div className="jobs-empty">
+              <div className="jobs-empty-icon">{skillFilter !== 'all' ? '🔎' : '📭'}</div>
+              <p>
+                {skillFilter !== 'all'
+                  ? `No open jobs for "${SKILLS.find(s => s.id === skillFilter)?.label}" right now.`
+                  : 'No open jobs at the moment. Check back soon!'}
+              </p>
+            </div>
+          ) : (
+            <div className="job-feed">
+              {filteredJobs.map((job, i) => (
+                <JobCard
+                  key={job._id}
+                  job={job}
+                  index={i}
+                  fairnessScore={job.fairnessScore}
+                  isSkillMatch={job.isSkillMatch}
+                  token={token}
+                  applicationStatus={getAppStatusForJob(job._id)}
+                  onApply={() => {
+                    // Refresh applications after applying
+                    fetchApplications();
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          TAB: MY APPLICATIONS
+      ══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'applications' && (
+        <div className="job-feed-section">
+          <div className="job-feed-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div className="section-icon" style={{ width: 36, height: 36, fontSize: '1rem' }}>📋</div>
+              <div>
+                <div className="section-title">My Applications</div>
+                <div className="section-subtitle">
+                  {appsLoading ? 'Loading…' : `${applications.length} application${applications.length !== 1 ? 's' : ''} submitted`}
+                </div>
+              </div>
+            </div>
+            <button
+              id="refresh-applications-btn"
+              className="btn-refresh"
+              onClick={() => fetchApplications()}
+              disabled={appsLoading}
+            >
+              {appsLoading ? '…' : '↻ Refresh'}
+            </button>
+          </div>
+
+          {appsLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem' }}>
+              {[1, 2, 3].map((n) => <div key={n} className="shimmer-card" style={{ height: 90 }} />)}
+            </div>
+          ) : applications.length === 0 ? (
+            <div className="jobs-empty">
+              <div className="jobs-empty-icon">📭</div>
+              <p>No applications yet. Browse open jobs and apply to get started!</p>
+              <button
+                onClick={() => setActiveTab('jobs')}
+                style={{
+                  marginTop: '1rem',
+                  padding: '0.65rem 1.5rem',
+                  borderRadius: 'var(--radius-md, 12px)',
+                  border: 'none',
+                  background: 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                🔍 Browse Jobs
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '0.75rem 1rem' }}>
+              {applications.map((app) => (
+                <ApplicationRow key={app._id} application={app} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Edit Skills Modal ── */}
       {showEditSkills && (
@@ -394,6 +567,90 @@ export default function WorkerDashboard() {
     </div>
   );
 }
+
+// ── ApplicationRow ────────────────────────────────────────────────────────────
+function ApplicationRow({ application }) {
+  const job = application.job;
+  const skill = SKILLS.find((s) => s.id === job?.requiredSkill);
+  const status = application.status;
+
+  const statusConfig = {
+    pending:   { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.30)', color: '#b45309', icon: '⏳', label: 'Pending' },
+    accepted:  { bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.30)', color: '#047857', icon: '✅', label: 'Hired' },
+    rejected:  { bg: 'rgba(239, 68, 68, 0.10)', border: 'rgba(239, 68, 68, 0.30)', color: '#b91c1c', icon: '❌', label: 'Rejected' },
+    completed: { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.30)', color: '#4338ca', icon: '🏆', label: 'Completed' },
+  };
+  const sc = statusConfig[status] || statusConfig.pending;
+
+  const appliedDate = new Date(application.appliedAt).toLocaleDateString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: '1rem',
+      padding: '0.85rem 1.1rem',
+      background: 'var(--clr-bg-card, #ffffff)',
+      border: '1px solid var(--clr-border, #e2e8f0)',
+      borderRadius: 'var(--radius-md, 12px)',
+      transition: 'all 150ms',
+      flexWrap: 'wrap',
+      borderLeft: `3px solid ${sc.border}`,
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{
+          fontSize: '0.92rem',
+          fontWeight: 700,
+          color: 'var(--clr-text-heading, #0f172a)',
+          marginBottom: '0.3rem',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}>
+          {job?.title || 'Unknown Job'}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', fontSize: '0.78rem', color: 'var(--clr-text-muted, #475569)' }}>
+          {skill && (
+            <span style={{
+              padding: '0.15rem 0.55rem',
+              borderRadius: '9999px',
+              background: 'var(--clr-bg-mid, #f1f5f9)',
+              border: '1px solid var(--clr-border, #e2e8f0)',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+            }}>
+              {skill.icon} {skill.label}
+            </span>
+          )}
+          {job?.dailyWage && <span style={{ fontWeight: 600 }}>₹{job.dailyWage}/day</span>}
+          {job?.city && <span>📍 {job.city}</span>}
+          <span style={{ color: 'var(--clr-text-faint, #94a3b8)' }}>Applied {appliedDate}</span>
+          {job?.employerId?.name && <span>🏢 {job.employerId.name}</span>}
+        </div>
+      </div>
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.3rem',
+        padding: '0.35rem 0.85rem',
+        borderRadius: '9999px',
+        fontSize: '0.76rem',
+        fontWeight: 700,
+        background: sc.bg,
+        border: `1px solid ${sc.border}`,
+        color: sc.color,
+        flexShrink: 0,
+        letterSpacing: '0.01em',
+      }}>
+        {sc.icon} {sc.label}
+      </span>
+    </div>
+  );
+}
+
 
 // ── StatCard ──────────────────────────────────────────────────────────────────
 function StatCard({ icon, label, value, color }) {

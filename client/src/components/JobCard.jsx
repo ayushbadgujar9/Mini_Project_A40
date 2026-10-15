@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 
 /**
  * JobCard Component (Clean Emerald / Mint Light Theme)
@@ -17,6 +17,8 @@ import React from 'react';
  * @param {Object} [props.job] - Fallback job object (job.title, job.dailyWage, job.city, job.requiredSkill)
  * @param {number} [props.fairnessScore] - Fairness engine score for job object
  * @param {boolean} [props.isSkillMatch] - Skill match flag for job object
+ * @param {string} [props.token] - Auth token for applying
+ * @param {string} [props.applicationStatus] - Existing application status if already applied
  */
 export default function JobCard({
   title,
@@ -28,7 +30,14 @@ export default function JobCard({
   job,
   fairnessScore = 0,
   isSkillMatch = false,
+  token,
+  applicationStatus,
 }) {
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(!!applicationStatus);
+  const [status, setStatus] = useState(applicationStatus || null);
+  const [error, setError] = useState(null);
+
   // Resolve values from direct props or job object
   const displayTitle = title || job?.title || 'Masonry Worker Needed';
   const displayWage = wage || (job?.dailyWage ? `₹${job.dailyWage}/day` : '₹600/day');
@@ -37,6 +46,68 @@ export default function JobCard({
   const displayFairMatch = isFairMatch !== undefined 
     ? isFairMatch 
     : (isSkillMatch && fairnessScore >= 70);
+
+  const handleApply = async () => {
+    // If custom onApply is provided, use that
+    if (onApply && !token) {
+      onApply();
+      return;
+    }
+
+    if (!token || !job?._id) return;
+
+    setApplying(true);
+    setError(null);
+    try {
+      const res = await fetch(`http://localhost:5000/api/applications/apply/${job._id}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setApplied(true);
+      setStatus('pending');
+      if (onApply) onApply(data.application);
+    } catch (err) {
+      if (err.message?.includes('already applied')) {
+        setApplied(true);
+        setStatus('pending');
+      } else {
+        setError(err.message || 'Failed to apply.');
+      }
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  // Status badge styling
+  const getStatusBadge = () => {
+    if (!applied || !status) return null;
+    const configs = {
+      pending:  { bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)', color: '#b45309', text: '⏳ Pending' },
+      accepted: { bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', color: '#047857', text: '✅ Accepted' },
+      rejected: { bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.3)', color: '#b91c1c', text: '❌ Rejected' },
+      completed: { bg: 'rgba(99, 102, 241, 0.12)', border: 'rgba(99, 102, 241, 0.3)', color: '#4338ca', text: '🏆 Completed' },
+    };
+    const cfg = configs[status] || configs.pending;
+    return (
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.25rem',
+        padding: '0.3rem 0.75rem',
+        borderRadius: '9999px',
+        fontSize: '0.73rem',
+        fontWeight: 700,
+        background: cfg.bg,
+        border: `1px solid ${cfg.border}`,
+        color: cfg.color,
+        letterSpacing: '0.01em',
+      }}>
+        {cfg.text}
+      </span>
+    );
+  };
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-5 flex flex-col justify-between w-full max-w-sm hover:border-emerald-300 shadow-sm transition-all">
@@ -108,14 +179,54 @@ export default function JobCard({
         </div>
       </div>
 
-      {/* Full-width Action Button (Crisp Emerald) */}
-      <button
-        type="button"
-        onClick={onApply}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md py-3 text-base font-medium transition-colors"
-      >
-        Apply Now
-      </button>
+      {/* Error message */}
+      {error && (
+        <div style={{
+          padding: '0.5rem 0.75rem',
+          marginBottom: '0.5rem',
+          borderRadius: '8px',
+          fontSize: '0.78rem',
+          background: 'rgba(239, 68, 68, 0.08)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          color: '#b91c1c',
+        }}>
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* Application status badge or Apply button */}
+      {applied ? (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '0.65rem',
+          borderRadius: '8px',
+          background: 'var(--clr-bg-mid, #f1f5f9)',
+          border: '1px solid var(--clr-border, #e2e8f0)',
+        }}>
+          {getStatusBadge()}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={applying}
+          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-md py-3 text-base font-medium transition-colors disabled:opacity-60"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+        >
+          {applying ? (
+            <>
+              <span style={{
+                width: 16, height: 16, border: '2px solid rgba(255,255,255,0.3)',
+                borderTopColor: '#fff', borderRadius: '50%',
+                animation: 'spin 0.6s linear infinite', display: 'inline-block',
+              }} />
+              Applying…
+            </>
+          ) : 'Apply Now'}
+        </button>
+      )}
     </div>
   );
 }

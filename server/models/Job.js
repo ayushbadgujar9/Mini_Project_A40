@@ -78,6 +78,16 @@ const jobSchema = new mongoose.Schema(
       },
       default: 'open',
     },
+
+    isFlagged: {
+      type: Boolean,
+      default: false,
+    },
+
+    flagReason: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

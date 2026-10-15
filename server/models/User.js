@@ -17,11 +17,11 @@ const requireForWorkerOrEmployer = {
 const requireForAdmin = {
   validator: function (value) {
     if (this.role === 'admin') {
-      return value != null && value.trim().length > 0;
+      return (value != null && value.trim().length > 0) || (this.phoneNumber != null && this.phoneNumber.trim().length > 0);
     }
     return true; // Not required for workers / employers
   },
-  message: 'Admin ID is required for admin accounts.',
+  message: 'Admin ID or Phone number is required for admin accounts.',
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -42,7 +42,33 @@ const userSchema = new mongoose.Schema(
         values: ['worker', 'employer', 'admin'],
         message: 'Role must be one of: worker, employer, admin.',
       },
+      default: 'worker',
       required: [true, 'Role is required.'],
+    },
+
+    // ── Verification Status ──────────────────────────────────────────────────
+    verificationStatus: {
+      type: String,
+      enum: {
+        values: ['unverified', 'pending', 'verified', 'rejected'],
+        message: 'verificationStatus must be one of: unverified, pending, verified, rejected.',
+      },
+      default: 'unverified',
+    },
+
+    rejectionReason: {
+      type: String,
+      default: null,
+    },
+
+    ocrExtractedText: {
+      type: String,
+      default: null,
+    },
+
+    ocrData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
 
     // ── Worker / Employer credential ─────────────────────────────────────────
@@ -88,11 +114,23 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
-    // ── Location (used for fairness proximity scoring) ────────────────────────
+    // ── Location & GeoJSON ───────────────────────────────────────────────────
     city: {
       type: String,
       trim: true,
       default: null,
+    },
+
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude] e.g. [74.24, 16.70]
+        default: [74.24, 16.70],
+      },
     },
 
     // ── Fairness Engine fields ────────────────────────────────────────────────
@@ -107,8 +145,13 @@ const userSchema = new mongoose.Schema(
       min: 0,
     },
 
-    // ── ID Image (retained for admin review) ──────────────────────────────────
+    // ── ID Image ─────────────────────────────────────────────────────────────
     idImagePath: {
+      type: String,
+      default: null,
+    },
+
+    idCardUrl: {
       type: String,
       default: null,
     },
@@ -143,14 +186,10 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Pre-save cross-field validation:
 //   - Workers / employers must NOT have an adminId
-//   - Admins must NOT have a phoneNumber
 // ──────────────────────────────────────────────────────────────────────────────
 userSchema.pre('save', function (next) {
   if (['worker', 'employer'].includes(this.role) && this.adminId) {
     return next(new Error('Workers and employers cannot have an adminId.'));
-  }
-  if (this.role === 'admin' && this.phoneNumber) {
-    return next(new Error('Admins cannot have a phoneNumber.'));
   }
   next();
 });
