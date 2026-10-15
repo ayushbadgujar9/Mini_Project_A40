@@ -41,7 +41,10 @@ export default function JobCard({
   // Resolve values from direct props or job object
   const displayTitle = title || job?.title || 'Masonry Worker Needed';
   const displayWage = wage || (job?.dailyWage ? `₹${job.dailyWage}/day` : '₹600/day');
-  const displayDistance = distance || (job?.city ? `${job.city}` : '2.5 km away');
+  const displayDistance = distance 
+    || (job?.distance != null ? `${job.distance} km away` : null)
+    || (job?.distanceInKm != null ? `${job.distanceInKm} km away` : null)
+    || (job?.city ? `${job.city}` : '2.5 km away');
   const displaySkill = skill || job?.requiredSkill || 'Masonry';
   const displayFairMatch = isFairMatch !== undefined 
     ? isFairMatch 

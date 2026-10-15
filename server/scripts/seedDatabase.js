@@ -149,10 +149,135 @@ async function seedDatabase() {
     const jobsData = [
       {
         title: 'Site Mason & Concrete Specialist',
-        description: 'Need experienced masons for residential project in Kolhapur city.',
+        description: 'Need experienced masons for residential project in central Kolhapur.',
         requiredSkill: 'masonry',
         dailyWage: 850,
         city: 'Kolhapur',
+        location: { type: 'Point', coordinates: [74.243, 16.704] }, // ~0.5 km from Kolhapur center
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      {
+        title: 'Residential Interior Painting & Finishing',
+        description: 'Skilled painters needed for a 2-BHK apartment near Rajarampuri.',
+        requiredSkill: 'painting',
+        dailyWage: 750,
+        city: 'Kolhapur',
+        location: { type: 'Point', coordinates: [74.249, 16.711] }, // ~1.5 km away
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      {
+        title: 'Commercial Electrical & Wiring Installation',
+        description: 'Electrician needed for retail shop fit-out near Tarabai Park.',
+        requiredSkill: 'electrical',
+        dailyWage: 900,
+        city: 'Kolhapur',
+        location: { type: 'Point', coordinates: [74.262, 16.720] }, // ~3.2 km away
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      {
+        title: 'Furniture Carpentry & Door Fitting',
+        description: 'Experienced carpenter required for custom wardrobes and fittings in Shiroli.',
+        requiredSkill: 'carpentry',
+        dailyWage: 800,
+        city: 'Kolhapur',
+        location: { type: 'Point', coordinates: [74.285, 16.735] }, // ~6.1 km away
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      {
+        title: 'Heavy Structural Welding & Fabrication',
+        description: 'Certified arc welder needed for shed fabrication work in Gokul Shirgaon MIDC.',
+        requiredSkill: 'welding',
+        dailyWage: 1050,
+        city: 'Kolhapur',
+        location: { type: 'Point', coordinates: [74.310, 16.760] }, // ~10.5 km away
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      {
+        title: 'Garden Landscaping & Pruning',
+        description: 'Gardener needed for farmhouse landscaping on the outskirts of Uchgaon.',
+        requiredSkill: 'gardening',
+        dailyWage: 650,
+        city: 'Kolhapur',
+        location: { type: 'Point', coordinates: [74.360, 16.780] }, // ~15.8 km away
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      // ── Sangli Jobs ────────────────────────────────────────────────────────
+      {
+        title: 'Sangli Turmeric Market Warehouse Loader',
+        description: 'Need active workers for turmeric bag loading and stacking in Sangli APMC market.',
+        requiredSkill: 'cleaning',
+        dailyWage: 700,
+        city: 'Sangli',
+        location: { type: 'Point', coordinates: [74.582, 16.853] }, // Sangli center
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      {
+        title: 'Sangli Textile Factory Woodwork & Fitting',
+        description: 'Skilled carpentry and wooden frame repair for local weaving unit in Sangli.',
+        requiredSkill: 'carpentry',
+        dailyWage: 800,
+        city: 'Sangli',
+        location: { type: 'Point', coordinates: [74.591, 16.859] }, // ~1.2 km from Sangli center
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      // ── Pune Jobs ──────────────────────────────────────────────────────────
+      {
+        title: 'Pune High-Rise Construction Site Mason',
+        description: 'Skilled brick masonry workers needed for new commercial tower in Pune.',
+        requiredSkill: 'construction',
+        dailyWage: 950,
+        city: 'Pune',
+        location: { type: 'Point', coordinates: [73.858, 18.522] }, // Pune center / Shivajinagar
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      {
+        title: 'Pune Industrial Fabrication & Welder',
+        description: 'Urgent requirement for arc welders at industrial manufacturing unit in Pune.',
+        requiredSkill: 'welding',
+        dailyWage: 1100,
+        city: 'Pune',
+        location: { type: 'Point', coordinates: [73.845, 18.515] }, // ~1.5 km from Pune center
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      // ── Jalgaon Jobs ───────────────────────────────────────────────────────
+      {
+        title: 'Jalgaon Banana Farm Harvest & Sorting Specialist',
+        description: 'Experienced agricultural workers needed for harvest, packaging and tree care.',
+        requiredSkill: 'gardening',
+        dailyWage: 650,
+        city: 'Jalgaon',
+        location: { type: 'Point', coordinates: [75.564, 21.009] }, // Jalgaon center
+        status: 'open',
+        isFlagged: false,
+        employerId: employer._id,
+      },
+      {
+        title: 'Jalgaon Commercial Complex Electrician',
+        description: 'Licensed electrician needed for commercial wiring and transformer maintenance.',
+        requiredSkill: 'electrical',
+        dailyWage: 850,
+        city: 'Jalgaon',
+        location: { type: 'Point', coordinates: [75.560, 21.005] }, // Jalgaon center
         status: 'open',
         isFlagged: false,
         employerId: employer._id,
@@ -163,6 +288,7 @@ async function seedDatabase() {
         requiredSkill: 'plumbing',
         dailyWage: 950,
         city: 'Kolhapur',
+        location: { type: 'Point', coordinates: [74.254, 16.701] },
         status: 'open',
         isFlagged: true,
         flagReason: 'Reported as potential spam wage listing',
@@ -181,7 +307,7 @@ async function seedDatabase() {
     console.log('   - Admin Users  : 1');
     console.log('   - Workers      : 3 (Pending Verification)');
     console.log('   - Employers    : 1');
-    console.log('   - Job Listings : 2 (1 Flagged for Moderation)');
+    console.log(`   - Job Listings : ${jobsData.length} (1 Flagged for Moderation)`);
     console.log('───────────────────────────────────────────────────\n');
   } catch (err) {
     console.error('❌ Database Seeding Error:', err);

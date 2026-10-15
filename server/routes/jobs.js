@@ -54,17 +54,146 @@ function calcFairnessScore(worker, job) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Geospatial Distance Helper (Haversine formula in Kilometers)
+// ─────────────────────────────────────────────────────────────────────────────
+function calculateDistanceInKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth's mean radius in kilometers
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+    Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  return Math.round(distance * 10) / 10; // e.g. 1.2 km
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/jobs/nearby
+// Accepts latitude, longitude, and maxDistanceInKm as query parameters.
+// Uses MongoDB's $near operator on the GeoJSON Point location field
+// using the 2dsphere index to return active jobs within the specified radius.
+// Calculates and appends the distance in kilometers to each returned job object.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/nearby', async (req, res) => {
+  try {
+    const rawLat = req.query.latitude ?? req.query.lat;
+    const rawLon = req.query.longitude ?? req.query.lng ?? req.query.lon;
+    const rawRadius = req.query.maxDistanceInKm ?? req.query.radius;
+
+    if (rawLat == null || rawLon == null || rawLat === '' || rawLon === '') {
+      return res.status(400).json({
+        message: 'latitude and longitude are required query parameters.',
+      });
+    }
+
+    const latitude = parseFloat(rawLat);
+    const longitude = parseFloat(rawLon);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return res.status(400).json({
+        message: 'latitude and longitude must be valid numbers.',
+      });
+    }
+
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return res.status(400).json({
+        message: 'latitude must be between -90 and 90, and longitude between -180 and 180.',
+      });
+    }
+
+    const maxDistanceInKm = rawRadius ? parseFloat(rawRadius) : 10;
+    if (isNaN(maxDistanceInKm) || maxDistanceInKm <= 0) {
+      return res.status(400).json({
+        message: 'maxDistanceInKm must be a positive number.',
+      });
+    }
+
+    const maxDistanceInMeters = maxDistanceInKm * 1000;
+
+    // MongoDB geospatial query using $near with 2dsphere index
+    const query = {
+      status: 'open',
+      isFlagged: { $ne: true },
+      location: {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [longitude, latitude], // GeoJSON Point format: [lon, lat]
+          },
+          $maxDistance: maxDistanceInMeters,
+        },
+      },
+    };
+
+    if (req.query.skill && req.query.skill !== 'all') {
+      query.requiredSkill = req.query.skill;
+    }
+
+    const jobs = await Job.find(query)
+      .populate('employerId', 'name phoneNumber')
+      .lean();
+
+    // Calculate and append the distance in kilometers to each returned job object
+    const jobsWithDistance = jobs.map((job) => {
+      let distance = null;
+      if (
+        job.location &&
+        Array.isArray(job.location.coordinates) &&
+        job.location.coordinates.length === 2
+      ) {
+        const [jobLon, jobLat] = job.location.coordinates;
+        distance = calculateDistanceInKm(latitude, longitude, jobLat, jobLon);
+      }
+      return {
+        ...job,
+        distance,
+        distanceInKm: distance,
+      };
+    });
+
+    return res.status(200).json({
+      jobs: jobsWithDistance,
+      count: jobsWithDistance.length,
+      center: { latitude, longitude },
+      maxDistanceInKm,
+    });
+  } catch (err) {
+    console.error('Error fetching nearby jobs:', err);
+    return res.status(500).json({
+      message: 'Failed to fetch nearby jobs.',
+      error: err.message,
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/jobs
 // Employer posts a new job listing.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/', isEmployer, async (req, res) => {
   try {
-    const { title, description, requiredSkill, dailyWage, city } = req.body;
+    const { title, description, requiredSkill, dailyWage, city, location, latitude, longitude } = req.body;
 
     if (!title || !description || !requiredSkill || dailyWage == null) {
       return res.status(400).json({
         message: 'title, description, requiredSkill, and dailyWage are all required.',
       });
+    }
+
+    let jobLocation = { type: 'Point', coordinates: [74.24, 16.70] };
+    if (location && Array.isArray(location.coordinates) && location.coordinates.length === 2) {
+      jobLocation = {
+        type: 'Point',
+        coordinates: [Number(location.coordinates[0]), Number(location.coordinates[1])],
+      };
+    } else if (latitude != null && longitude != null && !isNaN(Number(latitude)) && !isNaN(Number(longitude))) {
+      jobLocation = {
+        type: 'Point',
+        coordinates: [Number(longitude), Number(latitude)],
+      };
     }
 
     const job = await Job.create({
@@ -74,6 +203,7 @@ router.post('/', isEmployer, async (req, res) => {
       dailyWage:     Number(dailyWage),
       employerId:    req.user.id,
       city:          city ? city.trim() : null,
+      location:      jobLocation,
     });
 
     await job.populate('employerId', 'name');

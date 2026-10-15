@@ -70,6 +70,19 @@ const jobSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ── Location & GeoJSON (Point format for geospatial radius queries) ────────
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude] e.g. [74.24, 16.70]
+        default: [74.24, 16.70],
+      },
+    },
+
     status: {
       type: String,
       enum: {
@@ -96,5 +109,8 @@ const jobSchema = new mongoose.Schema(
 
 // Index for quick queries on open jobs, newest first
 jobSchema.index({ status: 1, createdAt: -1 });
+
+// 2dsphere index for geospatial queries ($near, $geoWithin)
+jobSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('Job', jobSchema);
