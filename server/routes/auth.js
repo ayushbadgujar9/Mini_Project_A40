@@ -1,6 +1,8 @@
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { generateAndSendOTP } = require('../utils/otpService');
 
 const router = express.Router();
 
@@ -9,119 +11,213 @@ const router = express.Router();
 // ──────────────────────────────────────────────────────────────────────────────
 const signToken = (user) =>
   jwt.sign(
-    { id: user._id, role: user.role },
+    { id: user._id, role: user.role, email: user.email, name: user.name },
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
   );
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/register
-// Body: { name, role, phoneNumber?, adminId?, password }
-// Note: Admin self-registration is blocked; use `npm run seed` instead.
+// Accepts: { name, email, role }
+// Creates a new unverified user and calls generateAndSendOTP()
 // ──────────────────────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    const { name, role, phoneNumber, adminId, password } = req.body;
+    const { name, email, role } = req.body;
 
-    // Block public admin registration
-    if (role === 'admin') {
-      return res.status(403).json({
-        message: 'Admin accounts cannot be self-registered. Contact a system administrator.',
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Name is required.' });
+    }
+    if (!email || !email.trim()) {
+      return res.status(400).json({ message: 'Email address is required.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      return res.status(400).json({ message: 'Please provide a valid email address.' });
+    }
+
+    // Role validation (worker or employer)
+    const assignedRole = ['worker', 'employer'].includes(role) ? role : 'worker';
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return res.status(409).json({
+        message: 'An account with this email address already exists. Please sign in.',
+        exists: true,
       });
     }
 
-    if (!name || !role || !password) {
-      return res.status(400).json({ message: 'name, role, and password are required.' });
-    }
-
-    // Build user payload dynamically
-    const userData = { name, role, password };
-    if (phoneNumber) userData.phoneNumber = phoneNumber;
-    if (adminId) userData.adminId = adminId;
-
-    const user = new User(userData);
+    // Create new unverified user without password
+    const user = new User({
+      name: name.trim(),
+      email: normalizedEmail,
+      role: assignedRole,
+      isVerified: false,
+      isEmailVerified: false,
+      verificationStatus: 'unverified',
+    });
     await user.save();
 
-    const token = signToken(user);
+    // Call generateAndSendOTP
+    const otpResult = await generateAndSendOTP(normalizedEmail);
 
     res.status(201).json({
-      message: 'Registration successful.',
-      token,
-      user: { id: user._id, name: user.name, role: user.role },
+      message: 'Registration initiated. Verification code sent to your email.',
+      email: normalizedEmail,
+      expiresInSeconds: otpResult.expiresInSeconds,
+      devOtp: otpResult.devOtp,
+      isNewUser: true,
     });
   } catch (err) {
-    // Duplicate key (phone/adminId already exists)
     if (err.code === 11000) {
-      const field = Object.keys(err.keyPattern)[0];
-      return res.status(409).json({ message: `An account with this ${field} already exists.` });
+      return res.status(409).json({ message: 'An account with this email already exists.' });
     }
-    // Mongoose validation errors
-    if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map((e) => e.message);
-      return res.status(400).json({ message: messages.join(' ') });
-    }
+    console.error('Registration error:', err);
     res.status(500).json({ message: 'Server error during registration.', error: err.message });
   }
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/login
-// Body (worker/employer): { phoneNumber, password }
-// Body (admin):           { adminId,     password }
+// Accepts: { email }
+// Checks if the user exists. If yes, calls generateAndSendOTP()
 // ──────────────────────────────────────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post(['/login', '/send-login-otp', '/send-otp'], async (req, res) => {
   try {
-    const { phoneNumber, adminId, password } = req.body;
+    const { email } = req.body;
 
-    if (!password) {
-      return res.status(400).json({ message: 'Password is required.' });
+    if (!email || !email.trim()) {
+      return res.status(400).json({ message: 'Email address is required.' });
     }
 
-    let user;
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      return res.status(400).json({ message: 'Please provide a valid email address.' });
+    }
 
-    if (phoneNumber) {
-      // ── Worker / Employer login ──────────────────────────────────────────
-      if (!phoneNumber.trim()) {
-        return res.status(400).json({ message: 'Phone number cannot be empty.' });
-      }
-      user = await User.findOne({ phoneNumber }).select('+password');
-
-      if (!user) {
-        return res.status(401).json({ message: 'Invalid phone number or password.' });
-      }
-    } else if (adminId) {
-      // ── Admin login ──────────────────────────────────────────────────────
-      if (!adminId.trim()) {
-        return res.status(400).json({ message: 'Admin ID cannot be empty.' });
-      }
-      user = await User.findOne({ adminId }).select('+password');
-
-      if (!user) {
-        return res.status(401).json({ message: 'Invalid admin ID or password.' });
-      }
-    } else {
-      return res.status(400).json({
-        message: 'Please provide either a phoneNumber or adminId to log in.',
+    const user = await User.findOne({ email: normalizedEmail });
+    if (!user) {
+      return res.status(404).json({
+        message: 'No account found with this email. Please register below.',
+        exists: false,
       });
     }
 
-    // ── Verify password ────────────────────────────────────────────────────
-    const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      const errorMsg =
-        phoneNumber ? 'Invalid phone number or password.' : 'Invalid admin ID or password.';
-      return res.status(401).json({ message: errorMsg });
+    // Call generateAndSendOTP
+    const otpResult = await generateAndSendOTP(normalizedEmail);
+
+    res.status(200).json({
+      message: `Verification code sent to ${normalizedEmail}. Valid for 5 minutes.`,
+      email: normalizedEmail,
+      expiresInSeconds: otpResult.expiresInSeconds,
+      devOtp: otpResult.devOtp,
+      exists: true,
+    });
+  } catch (err) {
+    console.error('Login OTP error:', err);
+    res.status(500).json({ message: 'Server error sending login code.', error: err.message });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/verify-otp
+// Accepts: { email, otp }
+// Compares the hash and checks expiration.
+// If valid, updates isVerified: true (if false), clears OTP fields, returns JWT.
+// ──────────────────────────────────────────────────────────────────────────────
+router.post(['/verify-otp', '/verify-login-otp', '/confirm-email-otp'], async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ message: 'Email address is required.' });
     }
+    if (!otp || !otp.trim()) {
+      return res.status(400).json({ message: '6-digit OTP code is required.' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail }).select('+currentOtp +emailOtp');
+
+    if (!user) {
+      return res.status(404).json({ message: 'No account found with this email. Please register.' });
+    }
+
+    const storedOtp = user.currentOtp || user.emailOtp;
+    const expiresAt = user.otpExpiresAt || user.emailOtpExpiresAt;
+
+    if (!storedOtp || !expiresAt) {
+      return res.status(400).json({ message: 'No pending OTP found. Please request a new code.' });
+    }
+
+    // Check expiration
+    if (new Date() > expiresAt) {
+      user.currentOtp = null;
+      user.otpExpiresAt = null;
+      user.emailOtp = null;
+      user.emailOtpExpiresAt = null;
+      await user.save();
+      return res.status(410).json({ message: 'Verification code has expired. Please request a new code.' });
+    }
+
+    // Compare hash using bcrypt
+    const isMatch = await bcrypt.compare(otp.trim(), storedOtp);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid verification code. Please check and try again.' });
+    }
+
+    // Mark user as verified and clear OTP fields
+    user.isVerified = true;
+    user.isEmailVerified = true;
+    user.verificationStatus = 'verified';
+    user.currentOtp = null;
+    user.otpExpiresAt = null;
+    user.emailOtp = null;
+    user.emailOtpExpiresAt = null;
+    await user.save();
 
     const token = signToken(user);
 
     res.status(200).json({
-      message: 'Login successful.',
+      message: 'Verification successful. Welcome to FairConnect!',
       token,
-      user: { id: user._id, name: user.name, role: user.role },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isVerified: user.isVerified,
+        isEmailVerified: user.isEmailVerified,
+      },
     });
   } catch (err) {
-    res.status(500).json({ message: 'Server error during login.', error: err.message });
+    console.error('verify-otp error:', err);
+    res.status(500).json({ message: 'Server error during OTP verification.', error: err.message });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/check-email
+// Helper route to check if an email exists before prompting for details
+// ──────────────────────────────────────────────────────────────────────────────
+router.post('/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email || !email.trim()) {
+      return res.status(400).json({ message: 'Email address is required.' });
+    }
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
+    res.status(200).json({
+      exists: !!user,
+      email: normalizedEmail,
+      name: user ? user.name : null,
+      role: user ? user.role : null,
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error checking email.', error: err.message });
   }
 });
 

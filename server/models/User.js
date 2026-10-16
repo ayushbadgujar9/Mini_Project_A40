@@ -1,31 +1,7 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Helper validators
-// ──────────────────────────────────────────────────────────────────────────────
-const requireForWorkerOrEmployer = {
-  validator: function (value) {
-    if (['worker', 'employer'].includes(this.role)) {
-      return value != null && value.trim().length > 0;
-    }
-    return true; // Not required for admins
-  },
-  message: 'Phone number is required for workers and employers.',
-};
-
-const requireForAdmin = {
-  validator: function (value) {
-    if (this.role === 'admin') {
-      return (value != null && value.trim().length > 0) || (this.phoneNumber != null && this.phoneNumber.trim().length > 0);
-    }
-    return true; // Not required for workers / employers
-  },
-  message: 'Admin ID or Phone number is required for admin accounts.',
-};
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Schema
+// Schema: Passwordless User Model
 // ──────────────────────────────────────────────────────────────────────────────
 const userSchema = new mongoose.Schema(
   {
@@ -34,6 +10,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Name is required.'],
       trim: true,
+    },
+
+    email: {
+      type: String,
+      required: [true, 'Email is required.'],
+      unique: true,
+      trim: true,
+      lowercase: true,
+      match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email address.'],
     },
 
     role: {
@@ -47,6 +32,16 @@ const userSchema = new mongoose.Schema(
     },
 
     // ── Verification Status ──────────────────────────────────────────────────
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
     verificationStatus: {
       type: String,
       enum: {
@@ -54,6 +49,45 @@ const userSchema = new mongoose.Schema(
         message: 'verificationStatus must be one of: unverified, pending, verified, rejected.',
       },
       default: 'unverified',
+    },
+
+    // ── Passwordless Email OTP Credentials ───────────────────────────────────
+    currentOtp: {
+      type: String,
+      default: null,
+      select: false, // Never return hashed OTP in general queries
+    },
+
+    otpExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ── Compatibility Aliases for OTP fields ─────────────────────────────────
+    emailOtp: {
+      type: String,
+      default: null,
+      select: false,
+    },
+
+    emailOtpExpiresAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ── Optional Profile Information ─────────────────────────────────────────
+    phoneNumber: {
+      type: String,
+      trim: true,
+      sparse: true,
+      default: null,
+    },
+
+    adminId: {
+      type: String,
+      trim: true,
+      sparse: true,
+      default: null,
     },
 
     rejectionReason: {
@@ -66,39 +100,7 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-    ocrData: {
-      type: mongoose.Schema.Types.Mixed,
-      default: null,
-    },
-
-    // ── Worker / Employer credential ─────────────────────────────────────────
-    phoneNumber: {
-      type: String,
-      trim: true,
-      sparse: true, // Allows null/undefined but enforces uniqueness when set
-      unique: true,
-      validate: requireForWorkerOrEmployer,
-      match: [/^\+?[1-9]\d{6,14}$/, 'Please provide a valid phone number.'],
-    },
-
-    // ── Admin credential ─────────────────────────────────────────────────────
-    adminId: {
-      type: String,
-      trim: true,
-      sparse: true,
-      unique: true,
-      validate: requireForAdmin,
-    },
-
-    // ── Shared credential ────────────────────────────────────────────────────
-    password: {
-      type: String,
-      required: [true, 'Password is required.'],
-      minlength: [6, 'Password must be at least 6 characters.'],
-      select: false, // Never return password in queries by default
-    },
-
-    // ── Worker Profile ────────────────────────────────────────────────────────
+    // ── Worker Profile Fields ────────────────────────────────────────────────
     skills: {
       type: [String],
       default: [],
@@ -109,12 +111,6 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
-
-    // ── Location & GeoJSON ───────────────────────────────────────────────────
     city: {
       type: String,
       trim: true,
@@ -145,7 +141,6 @@ const userSchema = new mongoose.Schema(
       min: 0,
     },
 
-    // ── ID Image ─────────────────────────────────────────────────────────────
     idImagePath: {
       type: String,
       default: null,
@@ -162,30 +157,8 @@ const userSchema = new mongoose.Schema(
 );
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Pre-save hook: Hash password before saving
-// ──────────────────────────────────────────────────────────────────────────────
-userSchema.pre('save', async function (next) {
-  // Only hash when password field is new or modified
-  if (!this.isModified('password')) return next();
-  try {
-    const salt = await bcrypt.genSalt(12);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Instance method: Compare plain-text password to stored hash
-// ──────────────────────────────────────────────────────────────────────────────
-userSchema.methods.comparePassword = async function (candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
-};
-
-// ──────────────────────────────────────────────────────────────────────────────
 // Pre-save cross-field validation:
-//   - Workers / employers must NOT have an adminId
+// Workers / employers cannot have an adminId
 // ──────────────────────────────────────────────────────────────────────────────
 userSchema.pre('save', function (next) {
   if (['worker', 'employer'].includes(this.role) && this.adminId) {

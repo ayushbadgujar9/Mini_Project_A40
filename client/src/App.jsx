@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 // Pages
 import LoginPage    from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import EmailVerification from './pages/EmailVerification';
 import WorkerDashboard    from './pages/worker/Dashboard';
 import CompleteProfile    from './pages/worker/CompleteProfile';
 import EmployerDashboard  from './pages/employer/Dashboard';
@@ -51,6 +52,14 @@ export default function App() {
           {/* Public */}
           <Route path="/login"    element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route
+            path="/verify-email"
+            element={
+              <ProtectedRoute>
+                <EmailVerification />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Role-aware home redirect */}
           <Route path="/" element={<RoleRedirect />} />

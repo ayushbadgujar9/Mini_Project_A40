@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -21,24 +21,65 @@ const SKILLS = [
 const API = 'http://localhost:5000';
 
 export default function CompleteProfile() {
-  const { token } = useAuth();
-  const navigate   = useNavigate();
+  const { token, user } = useAuth();
+  const navigate = useNavigate();
 
   // ── Skill state ────────────────────────────────────────────────────────────
   const [selectedSkills, setSelectedSkills] = useState([]);
   const [skillsSaving,   setSkillsSaving]   = useState(false);
   const [skillsMsg,      setSkillsMsg]       = useState(null); // { type, text }
 
-  // ── ID upload state ────────────────────────────────────────────────────────
-  const [idFile,        setIdFile]        = useState(null);
-  const [dragOver,      setDragOver]      = useState(false);
-  const [verifying,     setVerifying]     = useState(false);
-  const [verifyResult,  setVerifyResult]  = useState(null); // { verified, message }
-  const fileInputRef = useRef(null);
+  // ── Email Verification State ───────────────────────────────────────────────
+  const [email,          setEmail]          = useState(user?.email || '');
+  const [otpSent,        setOtpSent]        = useState(false);
+  const [otpDigits,      setOtpDigits]      = useState(['', '', '', '', '', '']);
+  const [emailSending,   setEmailSending]   = useState(false);
+  const [verifyingOtp,   setVerifyingOtp]   = useState(false);
+  const [verifyMsg,      setVerifyMsg]      = useState(null); // { type, text }
+  const [countdown,      setCountdown]      = useState(300);
+  const [timerActive,    setTimerActive]    = useState(false);
+  const digitRefs = useRef([]);
 
   // ── Step tracker ───────────────────────────────────────────────────────────
   const [skillsDone, setSkillsDone] = useState(false);
   const [verifyDone, setVerifyDone] = useState(false);
+
+  // Load existing profile to pre-fill
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API}/api/worker/profile`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.email) setEmail(data.email);
+        if (data.skills && data.skills.length > 0) {
+          setSelectedSkills(data.skills);
+          setSkillsDone(true);
+        }
+        if (data.isEmailVerified || data.isVerified) {
+          setVerifyDone(true);
+        }
+      })
+      .catch(() => {});
+  }, [token]);
+
+  // Countdown timer
+  useEffect(() => {
+    let interval = null;
+    if (timerActive && countdown > 0) {
+      interval = setInterval(() => setCountdown((c) => c - 1), 1000);
+    } else if (countdown === 0) {
+      setTimerActive(false);
+    }
+    return () => clearInterval(interval);
+  }, [timerActive, countdown]);
+
+  const formatTimer = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
 
   // ── Skill toggle ───────────────────────────────────────────────────────────
   const toggleSkill = (id) => {
@@ -72,7 +113,7 @@ export default function CompleteProfile() {
       setSkillsMsg({ type: 'success', text: '✅ Skills saved successfully!' });
       setSkillsDone(true);
 
-      // Redirect after both actions are complete
+      // Redirect if both steps complete
       if (verifyDone) {
         setTimeout(() => navigate('/worker/dashboard'), 1200);
       }
@@ -83,61 +124,102 @@ export default function CompleteProfile() {
     }
   };
 
-  // ── Handle file selection ──────────────────────────────────────────────────
-  const handleFileChange = (file) => {
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
-      setVerifyResult({ verified: false, message: 'Only JPEG or PNG images are accepted.' });
+  // ── Send Email OTP ─────────────────────────────────────────────────────────
+  const handleSendEmailOtp = async () => {
+    setVerifyMsg(null);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !/^\S+@\S+\.\S+$/.test(cleanEmail)) {
+      setVerifyMsg({ type: 'error', text: 'Please enter a valid email address.' });
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setVerifyResult({ verified: false, message: 'File must be under 5 MB.' });
-      return;
-    }
-    setIdFile(file);
-    setVerifyResult(null);
-  };
 
-  // ── Submit ID for OCR ──────────────────────────────────────────────────────
-  const handleVerify = async () => {
-    if (!idFile) {
-      setVerifyResult({ verified: false, message: 'Please select an ID image first.' });
-      return;
-    }
-    setVerifying(true);
-    setVerifyResult(null);
+    setEmailSending(true);
     try {
-      const formData = new FormData();
-      formData.append('idImage', idFile);
-
-      const res = await fetch(`${API}/api/worker/verify`, {
+      const res = await fetch(`${API}/api/auth/send-email-otp`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email: cleanEmail }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
 
-      setVerifyResult({ verified: data.verified, message: data.message });
+      setOtpSent(true);
+      setCountdown(data.expiresInSeconds || 300);
+      setTimerActive(true);
+      if (data.devOtp) {
+        setOtpDigits(data.devOtp.split(''));
+        setVerifyMsg({ type: 'success', text: `Demo Code: ${data.devOtp} (Auto-filled. Add SMTP in server/.env for real inbox emails)` });
+      } else {
+        setVerifyMsg({ type: 'success', text: `Verification code sent to ${cleanEmail}!` });
+        setOtpDigits(['', '', '', '', '', '']);
+      }
+      setTimeout(() => digitRefs.current[0]?.focus(), 150);
+    } catch (err) {
+      setVerifyMsg({ type: 'error', text: err.message });
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  // ── Digit input handlers ───────────────────────────────────────────────────
+  const handleDigitChange = (index, value) => {
+    const clean = value.replace(/\D/g, '').slice(-1);
+    const next = [...otpDigits];
+    next[index] = clean;
+    setOtpDigits(next);
+
+    if (clean && index < 5) {
+      digitRefs.current[index + 1]?.focus();
+    }
+
+    const code = next.join('');
+    if (code.length === 6) {
+      handleConfirmOtp(code);
+    }
+  };
+
+  const handleDigitKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      digitRefs.current[index - 1]?.focus();
+    }
+  };
+
+  // ── Confirm OTP ────────────────────────────────────────────────────────────
+  const handleConfirmOtp = async (codeOverride) => {
+    setVerifyMsg(null);
+    const code = codeOverride || otpDigits.join('');
+    if (code.length !== 6) {
+      setVerifyMsg({ type: 'error', text: 'Please enter all 6 digits of the code.' });
+      return;
+    }
+
+    setVerifyingOtp(true);
+    try {
+      const res = await fetch(`${API}/api/auth/confirm-email-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ otp: code }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+
+      setVerifyMsg({ type: 'success', text: '🎉 Email verified! Your worker profile is now verified.' });
       setVerifyDone(true);
 
-      // Redirect after both actions are complete
       if (skillsDone) {
         setTimeout(() => navigate('/worker/dashboard'), 1500);
       }
     } catch (err) {
-      setVerifyResult({ verified: false, message: err.message });
+      setVerifyMsg({ type: 'error', text: err.message });
     } finally {
-      setVerifying(false);
+      setVerifyingOtp(false);
     }
-  };
-
-  // ── Drag & drop handlers ───────────────────────────────────────────────────
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFileChange(file);
   };
 
   const stepState = (done, active) => {
@@ -169,7 +251,7 @@ export default function CompleteProfile() {
         <div style={{ marginBottom: '1.75rem' }}>
           <h1 className="page-title" style={{ marginBottom: '0.3rem' }}>Complete Your Profile</h1>
           <p className="page-subtitle" style={{ marginBottom: 0 }}>
-            Two quick steps to unlock all job opportunities on FairConnect.
+            Two quick steps to unlock verified job opportunities on FairConnect.
           </p>
         </div>
 
@@ -186,7 +268,7 @@ export default function CompleteProfile() {
             <div className={`step-dot ${stepState(verifyDone, skillsDone)}`}>
               {verifyDone ? '✓' : '2'}
             </div>
-            <span className={`step-label ${stepState(verifyDone, skillsDone)}`}>Verify ID</span>
+            <span className={`step-label ${stepState(verifyDone, skillsDone)}`}>Verify Email (OTP)</span>
           </div>
         </div>
 
@@ -256,109 +338,135 @@ export default function CompleteProfile() {
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
-            SECTION 2 — ID VERIFICATION
+            SECTION 2 — REAL-TIME EMAIL OTP VERIFICATION
         ══════════════════════════════════════════════════════════════════ */}
         <div className="profile-section">
           <div className="section-header">
-            <div className="section-icon">🪪</div>
+            <div className="section-icon">📧</div>
             <div>
-              <div className="section-title">AI-Powered ID Verification</div>
+              <div className="section-title">Email OTP Verification</div>
               <div className="section-subtitle">
-                Upload a government-issued ID — our AI reads and validates it instantly
+                Verify your email address with a 6-digit real-time code to become a verified worker
               </div>
             </div>
           </div>
 
-          {/* Drop zone */}
-          <div
-            className={`upload-zone ${dragOver ? 'drag-over' : ''}`}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-            onClick={() => fileInputRef.current?.click()}
-            role="button"
-            aria-label="Upload ID image"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              id="id-file-input"
-              accept="image/jpeg,image/png"
-              onChange={(e) => handleFileChange(e.target.files?.[0])}
-              style={{ display: 'none' }}
-            />
-            <div className="upload-icon">{idFile ? '📄' : '📂'}</div>
-            <div className="upload-label">
-              {idFile ? idFile.name : 'Click or drag & drop your ID here'}
-            </div>
-            <div className="upload-hint">
-              Aadhar, Passport, Voter ID, Driving Licence · JPEG / PNG · max 5 MB
-            </div>
-          </div>
-
-          {/* File selected preview */}
-          {idFile && !verifying && !verifyResult && (
-            <div className="upload-preview">
-              <span>🖼️</span>
-              <span className="upload-preview-name">{idFile.name}</span>
-              <button
-                type="button"
-                style={{ background: 'none', border: 'none', color: '#f43f5e', fontSize: '1rem', cursor: 'pointer' }}
-                onClick={() => setIdFile(null)}
-                aria-label="Remove file"
-              >✕</button>
+          {verifyMsg && (
+            <div className={`alert ${verifyMsg.type === 'error' ? 'alert-error' : 'alert-success'}`} style={{ marginBottom: '1.2rem' }}>
+              <span>{verifyMsg.type === 'error' ? '⚠️' : '✅'}</span>
+              {verifyMsg.text}
             </div>
           )}
 
-          {/* AI loading state */}
-          {verifying && (
-            <div className="ai-loading">
-              <div className="ai-dots">
-                <span /><span /><span />
+          {verifyDone ? (
+            <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 12, padding: '1.5rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🛡️</div>
+              <h3 style={{ margin: '0 0 0.5rem', color: '#34d399', fontSize: '1.2rem', fontWeight: 700 }}>Profile Verified</h3>
+              <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.9rem' }}>
+                Your email ({email}) is verified. You now enjoy priority ranking and direct job matches!
+              </p>
+            </div>
+          ) : (
+            <div>
+              <div style={{ marginBottom: '1.2rem' }}>
+                <label className="form-label" htmlFor="profile-email-input">
+                  Your Email Address
+                </label>
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <input
+                    id="profile-email-input"
+                    type="email"
+                    className="form-input"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="worker@example.com"
+                    style={{ flex: 1, minWidth: '220px' }}
+                    disabled={otpSent && timerActive}
+                  />
+                  <button
+                    type="button"
+                    id="send-profile-otp-btn"
+                    className="btn-secondary"
+                    onClick={handleSendEmailOtp}
+                    disabled={emailSending || !email.trim()}
+                    style={{ minWidth: '150px' }}
+                  >
+                    {emailSending ? <span className="btn-spinner" /> : otpSent ? 'Resend Code' : 'Send Code 📨'}
+                  </button>
+                </div>
               </div>
-              <span className="ai-loading-text">🤖 AI is reading your ID…</span>
-            </div>
-          )}
 
-          {/* Verification result */}
-          {verifyResult && (
-            <div className={`alert ${verifyResult.verified ? 'alert-success' : 'alert-error'}`}
-              style={{ marginBottom: '1rem' }}>
-              <span>{verifyResult.verified ? '✅' : '⚠️'}</span>
-              {verifyResult.message}
-            </div>
-          )}
+              {otpSent && (
+                <div style={{ background: 'rgba(15, 23, 42, 0.4)', borderRadius: 12, padding: '1.2rem', border: '1px solid rgba(255,255,255,0.08)', marginBottom: '1.2rem' }}>
+                  <label className="form-label" style={{ display: 'block', textAlign: 'center', marginBottom: '0.8rem' }}>
+                    Enter 6-Digit Code (Sent to {email})
+                  </label>
+                  <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem' }}>
+                    {otpDigits.map((digit, idx) => (
+                      <input
+                        key={idx}
+                        ref={(el) => (digitRefs.current[idx] = el)}
+                        id={`complete-otp-${idx}`}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={1}
+                        value={digit}
+                        onChange={(e) => handleDigitChange(idx, e.target.value)}
+                        onKeyDown={(e) => handleDigitKeyDown(idx, e)}
+                        className="form-input"
+                        style={{
+                          width: '42px',
+                          height: '52px',
+                          textAlign: 'center',
+                          fontSize: '1.5rem',
+                          fontWeight: 800,
+                          padding: 0,
+                          borderRadius: '8px',
+                          background: 'rgba(15, 23, 42, 0.8)',
+                          borderColor: digit ? '#10b981' : 'rgba(255,255,255,0.15)',
+                          color: '#ffffff',
+                        }}
+                      />
+                    ))}
+                  </div>
 
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button
-              id="verify-id-btn"
-              className="btn-primary"
-              onClick={handleVerify}
-              disabled={verifying || verifyDone || !idFile}
-              style={{ maxWidth: 260 }}
-            >
-              {verifying ? (
-                <><span className="btn-spinner" />Verifying…</>
-              ) : verifyDone ? (
-                '✓ Verification Complete'
-              ) : (
-                '🔍 Upload & Verify ID'
+                  <div style={{ textAlign: 'center', marginBottom: '1rem', fontSize: '0.85rem', color: '#94a3b8' }}>
+                    {timerActive ? (
+                      <>Code valid for: <strong style={{ color: countdown < 60 ? '#f43f5e' : '#34d399' }}>{formatTimer(countdown)}</strong></>
+                    ) : (
+                      <span style={{ color: '#f43f5e', fontWeight: 600 }}>Code expired. Click Resend Code.</span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      type="button"
+                      id="verify-profile-otp-btn"
+                      className="btn-primary"
+                      onClick={() => handleConfirmOtp()}
+                      disabled={verifyingOtp || otpDigits.join('').length !== 6}
+                      style={{ maxWidth: '240px' }}
+                    >
+                      {verifyingOtp ? <><span className="btn-spinner" />Verifying…</> : 'Verify & Complete Profile'}
+                    </button>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
+          )}
 
-            {verifyDone && skillsDone && (
+          {verifyDone && skillsDone && (
+            <div style={{ marginTop: '1.5rem' }}>
               <button
                 id="go-dashboard-btn"
                 className="btn-primary"
                 onClick={() => navigate('/worker/dashboard')}
-                style={{ maxWidth: 200, background: 'linear-gradient(135deg, #34d399 0%, #059669 100%)' }}
+                style={{ maxWidth: 240, background: 'linear-gradient(135deg, #34d399 0%, #059669 100%)' }}
               >
                 Go to Dashboard →
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
       </div>

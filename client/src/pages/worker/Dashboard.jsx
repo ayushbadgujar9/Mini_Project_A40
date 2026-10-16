@@ -231,7 +231,7 @@ export default function WorkerDashboard() {
           >
             <div className="prompt-card-text" style={{ textAlign: 'left' }}>
               <h3>🚀 Complete Your Profile</h3>
-              <p>Add your skills and upload an ID to unlock job opportunities and get a Verified badge.</p>
+              <p>Add your skills and verify your email via real-time OTP to unlock job opportunities and get a Verified badge.</p>
             </div>
             <span className="prompt-card-arrow">→</span>
           </button>

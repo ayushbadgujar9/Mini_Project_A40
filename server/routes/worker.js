@@ -202,15 +202,18 @@ router.put('/profile', isWorker, async (req, res) => {
 router.get('/profile', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select('name skills primarySkill isVerified role city lastWorkedDate totalJobsCompleted');
+      .select('name email skills primarySkill isVerified isEmailVerified verificationStatus role city lastWorkedDate totalJobsCompleted');
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     return res.status(200).json({
       name:               user.name,
+      email:              user.email,
       role:               user.role,
       skills:             user.skills,
       primarySkill:       user.primarySkill,
       isVerified:         user.isVerified,
+      isEmailVerified:    user.isEmailVerified,
+      verificationStatus: user.verificationStatus,
       city:               user.city,
       lastWorkedDate:     user.lastWorkedDate,
       totalJobsCompleted: user.totalJobsCompleted,
