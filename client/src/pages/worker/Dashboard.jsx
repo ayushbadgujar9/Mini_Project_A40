@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import JobCard from '../../components/JobCard';
+import NearbyJobFilter from '../../components/NearbyJobFilter';
+import JobMap from '../../components/JobMap';
+import WorkerFeed from '../../components/WorkerFeed';
 
 const API = 'http://localhost:5000';
 
@@ -26,7 +29,10 @@ export default function WorkerDashboard() {
   const navigate = useNavigate();
 
   // ── Active tab ──────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('jobs'); // 'jobs' | 'applications'
+  const [activeTab, setActiveTab] = useState('nearby'); // 'nearby' | 'jobs' | 'applications'
+
+  // ── Map view toggle in jobs feed ───────────────────────────────────────────
+  const [showJobMap, setShowJobMap] = useState(true);
 
   // ── Profile ────────────────────────────────────────────────────────────────
   const [profile,        setProfile]        = useState(null);
@@ -343,22 +349,45 @@ export default function WorkerDashboard() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          TAB SWITCHER — Jobs / My Applications
+          TAB SWITCHER — Nearby / Jobs / My Applications
       ══════════════════════════════════════════════════════════════════ */}
       <div style={{ maxWidth: 900, margin: '0 auto 1.5rem', padding: '0 1rem' }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          gridTemplateColumns: '1.1fr 1fr 1fr',
           background: 'var(--clr-bg-mid, #f1f5f9)',
           borderRadius: 'var(--radius-md, 12px)',
           padding: '5px',
           border: '1px solid var(--clr-border, #e2e8f0)',
+          gap: '4px',
         }}>
+          <button
+            id="tab-nearby-btn"
+            onClick={() => setActiveTab('nearby')}
+            style={{
+              padding: '0.7rem 0.8rem',
+              border: 'none',
+              borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
+              fontWeight: 700,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.45rem',
+              transition: 'all 250ms',
+              background: activeTab === 'nearby' ? 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))' : 'transparent',
+              color: activeTab === 'nearby' ? '#fff' : 'var(--clr-text-dim, #64748b)',
+              boxShadow: activeTab === 'nearby' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
+            }}
+          >
+            📍 Nearby Jobs (Radius)
+          </button>
           <button
             id="tab-jobs-btn"
             onClick={() => setActiveTab('jobs')}
             style={{
-              padding: '0.7rem 1rem',
+              padding: '0.7rem 0.8rem',
               border: 'none',
               borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
               fontWeight: 700,
@@ -374,13 +403,13 @@ export default function WorkerDashboard() {
               boxShadow: activeTab === 'jobs' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
             }}
           >
-            🔍 Open Jobs
+            🔍 All Jobs
           </button>
           <button
             id="tab-applications-btn"
             onClick={() => setActiveTab('applications')}
             style={{
-              padding: '0.7rem 1rem',
+              padding: '0.7rem 0.8rem',
               border: 'none',
               borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
               fontWeight: 700,
@@ -396,15 +425,32 @@ export default function WorkerDashboard() {
               boxShadow: activeTab === 'applications' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
             }}
           >
-            📋 My Applications {applications.length > 0 && <span style={{
+            📋 Applications {applications.length > 0 && <span style={{
               background: 'rgba(255,255,255,0.25)',
               borderRadius: '9999px',
-              padding: '0.1rem 0.5rem',
-              fontSize: '0.75rem',
+              padding: '0.1rem 0.45rem',
+              fontSize: '0.72rem',
             }}>{applications.length}</span>}
           </button>
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          TAB: NEARBY JOBS (RADIUS DISCOVERY WITH WORKER FEED & MAP)
+      ══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'nearby' && (
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 1rem' }}>
+          <WorkerFeed
+            token={token}
+            onJobApplied={() => fetchApplications()}
+            initialLocation={
+              profile?.location?.coordinates && profile.location.coordinates.length >= 2
+                ? { lat: profile.location.coordinates[1], lng: profile.location.coordinates[0], name: profile.city || 'Kolhapur' }
+                : { lat: 16.7050, lng: 74.2433, name: 'Kolhapur Central' }
+            }
+          />
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════
           TAB: OPEN JOBS
@@ -422,15 +468,50 @@ export default function WorkerDashboard() {
                 </div>
               </div>
             </div>
-            <button
-              id="refresh-jobs-btn"
-              className="btn-refresh"
-              onClick={() => { setJobsLoading(true); fetchJobs(); }}
-              disabled={jobsLoading}
-            >
-              {jobsLoading ? '…' : '↻ Refresh'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button
+                id="toggle-job-map-btn"
+                type="button"
+                className="btn-refresh"
+                style={{
+                  background: showJobMap ? '#ecfdf5' : '#ffffff',
+                  color: showJobMap ? '#047857' : '#475569',
+                  borderColor: showJobMap ? '#10b981' : '#cbd5e1',
+                  fontWeight: 600,
+                }}
+                onClick={() => setShowJobMap(!showJobMap)}
+                title="Toggle interactive map view"
+              >
+                🗺️ {showJobMap ? 'Hide Map' : 'Show Map'}
+              </button>
+              <button
+                id="refresh-jobs-btn"
+                className="btn-refresh"
+                onClick={() => { setJobsLoading(true); fetchJobs(); }}
+                disabled={jobsLoading}
+              >
+                {jobsLoading ? '…' : '↻ Refresh'}
+              </button>
+            </div>
           </div>
+
+          {/* Interactive Visual Job Map */}
+          {!jobsLoading && showJobMap && (
+            <div style={{ marginBottom: '1.25rem' }}>
+              <JobMap
+                jobs={filteredJobs}
+                userLocation={
+                  profile?.location?.coordinates && profile.location.coordinates.length >= 2
+                    ? { lat: profile.location.coordinates[1], lng: profile.location.coordinates[0] }
+                    : { lat: 16.70, lng: 74.24 }
+                }
+                token={token}
+                onApply={() => fetchApplications()}
+                height="380px"
+                className="h-[380px] w-full rounded-lg"
+              />
+            </div>
+          )}
 
           {/* Skill filter chips */}
           {!jobsLoading && feedSkillIds.length > 0 && (
