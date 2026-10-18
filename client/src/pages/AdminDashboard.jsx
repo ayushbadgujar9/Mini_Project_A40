@@ -29,7 +29,7 @@ export default function AdminDashboard() {
   const { token, logout } = useAuth();
   const navigate = useNavigate();
 
-  // Navigation tab state: 'overview' | 'verifications' | 'jobs' | 'fairness'
+  // Navigation tab state: 'overview' | 'verifications' | 'jobs' | 'fairness' | 'users'
   const [activeTab, setActiveTab] = useState('overview');
 
   // Data states
@@ -50,6 +50,13 @@ export default function AdminDashboard() {
   const [jobs, setJobs] = useState([]);
   const [jobFilter, setJobFilter] = useState('all'); // 'all' | 'flagged' | 'open'
   const [jobSearch, setJobSearch] = useState('');
+
+  // Platform users directory state
+  const [users, setUsers] = useState([]);
+  const [userFilterRole, setUserFilterRole] = useState('all'); // 'all' | 'worker' | 'employer' | 'admin'
+  const [userSearch, setUserSearch] = useState('');
+  const [togglingUserId, setTogglingUserId] = useState(null);
+  const [deletingUserId, setDeletingUserId] = useState(null);
 
   // UI state
   const [loading, setLoading] = useState(true);
@@ -130,13 +137,24 @@ export default function AdminDashboard() {
     }
   }, [token]);
 
+  // ── Fetch Platform Users Directory ───────────────────────────────────────
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data.users || []);
+      }
+    } catch (_) {}
+  }, [token]);
+
   // Master refresh
   const loadAllData = useCallback(async () => {
     setLoading(true);
     setError('');
-    await Promise.all([fetchStats(), fetchVerifications(), fetchJobs()]);
+    await Promise.all([fetchStats(), fetchVerifications(), fetchJobs(), fetchUsers()]);
     setLoading(false);
-  }, [fetchStats, fetchVerifications, fetchJobs]);
+  }, [fetchStats, fetchVerifications, fetchJobs, fetchUsers]);
 
   useEffect(() => {
     loadAllData();
@@ -273,10 +291,72 @@ export default function AdminDashboard() {
     }
   };
 
+  // ── Toggle User Verification ──────────────────────────────────────────────
+  const handleToggleVerifyUser = async (u) => {
+    setTogglingUserId(u._id);
+    try {
+      const res = await fetch(`${API}/api/admin/users/${u._id}/toggle-verify`, {
+        method: 'PATCH',
+        headers: authHeaders,
+      });
+      if (!res.ok) throw new Error((await res.json()).message);
+      const data = await res.json();
+      setUsers((prev) =>
+        prev.map((item) =>
+          item._id === u._id ? { ...item, isVerified: data.user.isVerified, verificationStatus: data.user.verificationStatus } : item
+        )
+      );
+      showToast(data.message, 'success');
+      fetchStats();
+    } catch (err) {
+      showToast(err.message || 'Failed to toggle verification.', 'error');
+    } finally {
+      setTogglingUserId(null);
+    }
+  };
+
+  // ── Delete User ───────────────────────────────────────────────────────────
+  const handleDeleteUser = async (u) => {
+    const confirmed = window.confirm(
+      `⚠️ Remove User Account?\n\nName: ${u.name}\nEmail: ${u.email}\nRole: ${u.role}\n\nThis will permanently delete this user and their associated jobs.`
+    );
+    if (!confirmed) return;
+
+    setDeletingUserId(u._id);
+    try {
+      const res = await fetch(`${API}/api/admin/users/${u._id}`, {
+        method: 'DELETE',
+        headers: authHeaders,
+      });
+      if (!res.ok) throw new Error((await res.json()).message);
+      setUsers((prev) => prev.filter((item) => item._id !== u._id));
+      showToast(`🗑️ User "${u.name}" deleted successfully.`, 'warning');
+      loadAllData();
+    } catch (err) {
+      showToast(err.message || 'Failed to delete user.', 'error');
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
   };
+
+  // Filtered users list
+  const filteredUsers = users.filter((u) => {
+    if (userFilterRole !== 'all' && u.role !== userFilterRole) return false;
+    if (userSearch.trim()) {
+      const q = userSearch.toLowerCase();
+      const matchName = u.name?.toLowerCase().includes(q);
+      const matchEmail = u.email?.toLowerCase().includes(q);
+      const matchPhone = u.phoneNumber?.toLowerCase().includes(q);
+      const matchCity = u.city?.toLowerCase().includes(q);
+      return matchName || matchEmail || matchPhone || matchCity;
+    }
+    return true;
+  });
 
   // Filtered jobs list
   const filteredJobs = jobs.filter((job) => {
@@ -353,6 +433,18 @@ export default function AdminDashboard() {
             </button>
 
             <button
+              id="nav-users"
+              className={`admin-nav-btn ${activeTab === 'users' ? 'active' : ''}`}
+              onClick={() => setActiveTab('users')}
+            >
+              <span className="nav-icon">👥</span>
+              <span>User Directory</span>
+              <span className="nav-badge" style={{ background: '#3b82f6', color: '#ffffff' }}>
+                {users.length || stats.totalUsers || 0}
+              </span>
+            </button>
+
+            <button
               id="nav-verifications"
               className={`admin-nav-btn ${activeTab === 'verifications' ? 'active' : ''}`}
               onClick={() => setActiveTab('verifications')}
@@ -406,7 +498,7 @@ export default function AdminDashboard() {
             <div className="admin-section">
               <div className="section-header-box">
                 <h2>Platform Overview & Metrics</h2>
-                <p>Real-time platform activity metrics, user counts, and review queue status.</p>
+                <p>Real-time platform activity metrics, user counts, and review queue status. Click any metric card to explore details.</p>
               </div>
 
               {/* Stat Cards Grid */}
@@ -414,47 +506,70 @@ export default function AdminDashboard() {
                 <MetricCard
                   icon="👥"
                   title="Total Users"
-                  value={stats.totalUsers || (stats.totalWorkers + stats.totalEmployers + 1)}
-                  subtitle="Workers, Employers & Admins"
+                  value={stats.totalUsers || users.length || (stats.totalWorkers + stats.totalEmployers + 1)}
+                  subtitle="Workers, Employers & Admins (Click to view)"
                   color="#3b82f6"
+                  onClick={() => {
+                    setUserFilterRole('all');
+                    setActiveTab('users');
+                  }}
                 />
 
                 <MetricCard
                   icon="👷"
                   title="Total Workers"
                   value={stats.totalWorkers || stats.total || 0}
-                  subtitle={`${stats.verified || 0} Verified • ${(stats.totalWorkers || stats.total || 0) - (stats.verified || 0)} Unverified`}
+                  subtitle={`${stats.verified || 0} Verified • ${(stats.totalWorkers || stats.total || 0) - (stats.verified || 0)} Unverified (Click)`}
                   color="#10b981"
+                  onClick={() => {
+                    setUserFilterRole('worker');
+                    setActiveTab('users');
+                  }}
                 />
 
                 <MetricCard
                   icon="🏢"
                   title="Total Employers"
                   value={stats.totalEmployers || 0}
-                  subtitle="Active Job Creators"
+                  subtitle="Active Job Creators (Click to view)"
                   color="#f59e0b"
+                  onClick={() => {
+                    setUserFilterRole('employer');
+                    setActiveTab('users');
+                  }}
                 />
 
                 <MetricCard
                   icon="💼"
                   title="Active Jobs"
                   value={stats.activeJobs || 0}
-                  subtitle={`${stats.totalJobs || jobs.length} Total Postings`}
+                  subtitle={`${stats.totalJobs || jobs.length} Total Postings (Click to moderate)`}
                   color="#8b5cf6"
+                  onClick={() => setActiveTab('jobs')}
                 />
 
                 <MetricCard
                   icon="⏳"
                   title="Pending Identity Reviews"
                   value={stats.pendingReviews ?? stats.pendingIdentityReviews ?? verifications.length}
-                  subtitle="Awaiting Admin Review"
+                  subtitle="Awaiting Admin Review (Click to verify)"
                   color="#e11d48"
                   isAlert={verifications.length > 0}
+                  onClick={() => setActiveTab('verifications')}
                 />
               </div>
 
               {/* Quick Action Tiles */}
               <div className="quick-actions-grid" style={{ marginTop: '2rem' }}>
+                <div className="action-tile" onClick={() => { setUserFilterRole('all'); setActiveTab('users'); }}>
+                  <div className="tile-icon">👥</div>
+                  <div className="tile-body">
+                    <h3>Manage Platform Users ({users.length || stats.totalUsers || 0})</h3>
+                    <p>Inspect workers, employers, and admins, toggle verifications, or remove accounts.</p>
+                  </div>
+                  <span className="tile-arrow">→</span>
+                </div>
+
                 <div className="action-tile" onClick={() => setActiveTab('verifications')}>
                   <div className="tile-icon">🪪</div>
                   <div className="tile-body">
@@ -778,6 +893,210 @@ export default function AdminDashboard() {
               </div>
             </div>
           )}
+
+          {/* ─────────────────────────────────────────────────────────────── */}
+          {/* TAB 5: PLATFORM USERS DIRECTORY */}
+          {/* ─────────────────────────────────────────────────────────────── */}
+          {activeTab === 'users' && (
+            <div className="admin-section">
+              <div className="section-header-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <h2>Platform Users Directory</h2>
+                  <p>Browse, search, toggle verification status, and manage all platform workers, employers, and administrators.</p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button className="btn-refresh" onClick={fetchUsers} style={{ padding: '0.5rem 1rem' }}>
+                    ↻ Reload Users
+                  </button>
+                </div>
+              </div>
+
+              {/* Controls bar */}
+              <div className="moderation-controls-bar">
+                <div className="search-input-wrapper">
+                  <span className="search-icon">🔍</span>
+                  <input
+                    type="text"
+                    className="search-input"
+                    placeholder="Search by user name, email, phone number, or city..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                  />
+                  {userSearch && (
+                    <button className="clear-search-btn" onClick={() => setUserSearch('')}>✕</button>
+                  )}
+                </div>
+
+                <div className="admin-filter-pills">
+                  <button
+                    className={`pill-btn ${userFilterRole === 'all' ? 'active' : ''}`}
+                    onClick={() => setUserFilterRole('all')}
+                  >
+                    All Users ({users.length})
+                  </button>
+                  <button
+                    className={`pill-btn ${userFilterRole === 'worker' ? 'active' : ''}`}
+                    onClick={() => setUserFilterRole('worker')}
+                  >
+                    👷 Workers ({users.filter((u) => u.role === 'worker').length})
+                  </button>
+                  <button
+                    className={`pill-btn ${userFilterRole === 'employer' ? 'active' : ''}`}
+                    onClick={() => setUserFilterRole('employer')}
+                  >
+                    🏢 Employers ({users.filter((u) => u.role === 'employer').length})
+                  </button>
+                  <button
+                    className={`pill-btn ${userFilterRole === 'admin' ? 'active' : ''}`}
+                    onClick={() => setUserFilterRole('admin')}
+                  >
+                    🛡️ Admins ({users.filter((u) => u.role === 'admin').length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Users table */}
+              {loading ? (
+                <div className="admin-empty-state">
+                  <p>Loading users directory...</p>
+                </div>
+              ) : filteredUsers.length === 0 ? (
+                <div className="admin-empty-state">
+                  <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>👥</div>
+                  <h3>No Users Found</h3>
+                  <p>No user accounts matched your search or role filter.</p>
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="admin-jobs-table">
+                    <thead>
+                      <tr>
+                        <th>User & Profile</th>
+                        <th>Role</th>
+                        <th>Contact & Location</th>
+                        <th>Verification Status</th>
+                        <th>Registered Date</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredUsers.map((u) => {
+                        const roleColor = u.role === 'admin' ? '#e11d48' : u.role === 'employer' ? '#f59e0b' : '#10b981';
+                        const roleIcon = u.role === 'admin' ? '🛡️' : u.role === 'employer' ? '🏢' : '👷';
+                        return (
+                          <tr key={u._id}>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                <div style={{
+                                  width: 38,
+                                  height: 38,
+                                  borderRadius: '50%',
+                                  background: `${roleColor}20`,
+                                  color: roleColor,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontWeight: 800,
+                                  fontSize: '0.95rem'
+                                }}>
+                                  {(u.name || 'U').charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <span style={{ fontWeight: 700, color: '#0f172a', display: 'block' }}>
+                                    {u.name}
+                                  </span>
+                                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                    {u.email}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td>
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.35rem',
+                                padding: '0.25rem 0.65rem',
+                                borderRadius: '999px',
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                background: `${roleColor}15`,
+                                color: roleColor,
+                                textTransform: 'capitalize'
+                              }}>
+                                {roleIcon} {u.role}
+                              </span>
+                            </td>
+
+                            <td>
+                              <div>
+                                <div style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>
+                                  📱 {u.phoneNumber || 'No phone set'}
+                                </div>
+                                {u.city && (
+                                  <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.15rem' }}>
+                                    📍 {u.city}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+
+                            <td>
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: '6px',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                background: u.isVerified ? '#dcfce7' : u.verificationStatus === 'pending' ? '#fef3c7' : '#fee2e2',
+                                color: u.isVerified ? '#166534' : u.verificationStatus === 'pending' ? '#92400e' : '#991b1b',
+                              }}>
+                                {u.isVerified ? '✅ Verified' : u.verificationStatus === 'pending' ? '⏳ Pending Review' : '⚪ Unverified'}
+                              </span>
+                            </td>
+
+                            <td>
+                              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                {formatDate(u.createdAt)}
+                              </span>
+                            </td>
+
+                            <td style={{ textAlign: 'right' }}>
+                              <div className="action-buttons-group">
+                                {u.role !== 'admin' && (
+                                  <button
+                                    className="btn-action-flag"
+                                    onClick={() => handleToggleVerifyUser(u)}
+                                    disabled={togglingUserId === u._id}
+                                    title={u.isVerified ? 'Revoke verification' : 'Mark user verified'}
+                                    style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+                                  >
+                                    {togglingUserId === u._id ? 'Updating...' : u.isVerified ? 'Unverify' : 'Verify'}
+                                  </button>
+                                )}
+                                {u.role !== 'admin' && (
+                                  <button
+                                    className="btn-action-delete"
+                                    onClick={() => handleDeleteUser(u)}
+                                    disabled={deletingUserId === u._id}
+                                    title="Delete user account"
+                                    style={{ fontSize: '0.75rem', padding: '0.35rem 0.65rem' }}
+                                  >
+                                    {deletingUserId === u._id ? 'Deleting...' : '🗑️ Delete'}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </main>
       </div>
 
@@ -874,12 +1193,24 @@ export default function AdminDashboard() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Metric Card Sub-component
 // ─────────────────────────────────────────────────────────────────────────────
-function MetricCard({ icon, title, value, subtitle, color, isAlert }) {
+function MetricCard({ icon, title, value, subtitle, color, isAlert, onClick }) {
   return (
-    <div className={`admin-metric-card ${isAlert ? 'alert-card' : ''}`}>
+    <div
+      className={`admin-metric-card ${isAlert ? 'alert-card' : ''}`}
+      onClick={onClick}
+      style={{
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'transform 0.18s ease, box-shadow 0.18s ease',
+      }}
+    >
       <div className="metric-header">
         <span className="metric-icon" style={{ background: `${color}15`, color }}>{icon}</span>
         <span className="metric-title">{title}</span>
+        {onClick && (
+          <span style={{ marginLeft: 'auto', fontSize: '0.85rem', color: '#94a3b8' }} title="Click to open section">
+            ➔
+          </span>
+        )}
       </div>
       <div className="metric-value" style={{ color }}>
         {value}

@@ -32,16 +32,30 @@ async function generateAndSendOTP(email) {
   user.emailOtpExpiresAt = expiresAt;
   await user.save();
 
-  // 4. Send plain-text code via Brevo SMTP
-  await sendOtpEmail(normalizedEmail, plainOtp);
-
+  // 4. Try sending plain-text code via Brevo SMTP
+  let emailSent = false;
   const isConfigured = isSmtpConfigured();
+
+  if (isConfigured) {
+    try {
+      await sendOtpEmail(normalizedEmail, plainOtp);
+      emailSent = true;
+    } catch (emailErr) {
+      console.warn(`⚠️  Email delivery failed (${emailErr.message}). OTP will be shown on screen as fallback.`);
+      emailSent = false;
+    }
+  } else {
+    // Dev mode — just log to console
+    await sendOtpEmail(normalizedEmail, plainOtp);
+  }
 
   return {
     success: true,
     email: normalizedEmail,
     expiresInSeconds: 300,
-    devOtp: isConfigured ? undefined : plainOtp,
+    // Show OTP on frontend if SMTP is not configured OR if email failed to send
+    devOtp: emailSent ? undefined : plainOtp,
+    emailSent,
   };
 }
 

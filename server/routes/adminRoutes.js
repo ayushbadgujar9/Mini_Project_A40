@@ -293,4 +293,92 @@ const handleDeleteJob = async (req, res) => {
 
 router.delete('/jobs/:jobId', adminMiddleware, handleDeleteJob);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/users
+// Fetches all platform users (worker, employer, admin) with role/search filtering
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/users', adminMiddleware, async (req, res) => {
+  try {
+    const { role, status, search } = req.query;
+    const filter = {};
+
+    if (role && role !== 'all') {
+      filter.role = role;
+    }
+
+    if (status && status !== 'all') {
+      filter.verificationStatus = status;
+    }
+
+    if (search && search.trim()) {
+      const q = search.trim();
+      filter.$or = [
+        { name: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { phoneNumber: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    const users = await User.find(filter)
+      .select('name email role phoneNumber verificationStatus isVerified isEmailVerified city skills createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({ users, total: users.length });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to fetch users.', error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/admin/users/:userId/toggle-verify
+// Toggle verification status of a user
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/users/:userId/toggle-verify', adminMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const nextVerified = !user.isVerified;
+    user.isVerified = nextVerified;
+    user.verificationStatus = nextVerified ? 'verified' : 'unverified';
+    await user.save();
+
+    return res.status(200).json({
+      message: `User ${user.name} verification status set to ${user.verificationStatus}.`,
+      user: {
+        _id: user._id,
+        isVerified: user.isVerified,
+        verificationStatus: user.verificationStatus,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to update user verification.', error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/admin/users/:userId
+// Delete a user and associated jobs if employer
+// ─────────────────────────────────────────────────────────────────────────────
+router.delete('/users/:userId', adminMiddleware, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    if (String(userId) === String(req.user.id)) {
+      return res.status(400).json({ message: 'You cannot delete your own admin account.' });
+    }
+
+    const deleted = await User.findByIdAndDelete(userId);
+    if (!deleted) return res.status(404).json({ message: 'User not found.' });
+
+    if (deleted.role === 'employer') {
+      await Job.deleteMany({ employerId: deleted._id });
+    }
+
+    return res.status(200).json({ message: `User "${deleted.name}" has been removed.`, userId });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to delete user.', error: err.message });
+  }
+});
+
 module.exports = router;
