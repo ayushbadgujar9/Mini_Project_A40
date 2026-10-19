@@ -35,6 +35,9 @@ async function generateAndSendOTP(email) {
   // 4. Try sending plain-text code via Brevo SMTP
   let emailSent = false;
   const isConfigured = isSmtpConfigured();
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  console.log(`🔑 [OTP Code Generated for ${normalizedEmail}]: ${plainOtp}`);
 
   if (isConfigured) {
     try {

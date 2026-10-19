@@ -7,14 +7,14 @@ import { useAuth } from '../context/AuthContext';
 // Icons
 // ──────────────────────────────────────────────────────────────────────────────
 const MailIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="4" width="20" height="16" rx="2" />
     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
   </svg>
 );
 
 const UserIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
     <circle cx="12" cy="7" r="4" />
   </svg>
@@ -27,22 +27,17 @@ const ArrowLeftIcon = () => (
 );
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Pure Email Verification Login & Register Component
+// ──────────────────────────────────────────────────────────────────────────────
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isAuthenticated, user } = useAuth();
-
-  // If already authenticated, redirect to dashboard
-  useEffect(() => {
-    if (isAuthenticated && user?.role) {
-      navigate(`/${user.role}/dashboard`, { replace: true });
-    }
-  }, [isAuthenticated, user, navigate]);
+  const { login, logout, isAuthenticated, user } = useAuth();
 
   // Screen state: 'email' (Screen 1) | 'otp' (Screen 2)
   const [screen, setScreen] = useState('email');
 
-  // If user arrives via /register, start with registration fields visible
+  // New user registration mode toggle
   const isRegisterRoute = location.pathname.includes('register');
   const [isNewUserMode, setIsNewUserMode] = useState(isRegisterRoute);
 
@@ -53,7 +48,7 @@ export default function LoginPage() {
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const digitRefs = useRef([]);
 
-  // States
+  // Async & UX States
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -78,7 +73,7 @@ export default function LoginPage() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  // ── SCREEN 1: Submit Email (Login or Check) ────────────────────────────────
+  // ── SCREEN 1: Submit Email (Send Verification Code) ────────────────────────
   const handleEmailSubmit = async (e) => {
     if (e) e.preventDefault();
     setError('');
@@ -94,7 +89,7 @@ export default function LoginPage() {
 
     try {
       if (isNewUserMode) {
-        // Register flow
+        // Register Flow
         if (!name.trim()) {
           setError('Please enter your full name.');
           setLoading(false);
@@ -109,7 +104,7 @@ export default function LoginPage() {
 
         transitionToOtpScreen(data, trimmedEmail);
       } else {
-        // Login flow
+        // Login Flow
         try {
           const { data } = await axios.post('/api/auth/login', {
             email: trimmedEmail,
@@ -117,9 +112,9 @@ export default function LoginPage() {
           transitionToOtpScreen(data, trimmedEmail);
         } catch (loginErr) {
           if (loginErr.response?.status === 404) {
-            // User does not exist -> reveal Name & Role fields
+            // Email not found -> reveal Name & Role fields for instant signup
             setIsNewUserMode(true);
-            setSuccess('Welcome! Enter your name and role to finish creating your account.');
+            setSuccess('Welcome! Enter your name and role to complete registration.');
           } else {
             throw loginErr;
           }
@@ -136,7 +131,7 @@ export default function LoginPage() {
     setScreen('otp');
     setCountdown(data.expiresInSeconds || 300);
     setTimerActive(true);
-    setSuccess(data.message || `We sent a 6-digit code to ${userEmail}`);
+    setSuccess(data.message || `We sent a 6-digit verification code to ${userEmail}`);
 
     if (data.devOtp) {
       setDevOtpCode(data.devOtp);
@@ -179,7 +174,7 @@ export default function LoginPage() {
     }
   };
 
-  // ── Digit Input Handlers (Fat-Finger Friendly) ─────────────────────────────
+  // ── OTP Digit Input Handlers ───────────────────────────────────────────────
   const handleDigitChange = (index, value) => {
     const cleanVal = value.replace(/\D/g, '').slice(-1);
     const next = [...otpDigits];
@@ -226,7 +221,7 @@ export default function LoginPage() {
     setError('');
     const code = codeOverride || otpDigits.join('');
     if (code.length !== 6) {
-      setError('Please enter the complete 6-digit code.');
+      setError('Please enter the complete 6-digit verification code.');
       return;
     }
 
@@ -237,7 +232,7 @@ export default function LoginPage() {
         otp: code,
       });
 
-      setSuccess('Verification successful! Entering FairConnect…');
+      setSuccess('Email verified successfully! Entering FairConnect…');
       login(data.token);
 
       setTimeout(() => {
@@ -259,7 +254,7 @@ export default function LoginPage() {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '1.5rem',
-        background: '#f8fafc',
+        background: 'linear-gradient(135deg, #f8fafc 0%, #edf2f7 100%)',
       }}
     >
       <div
@@ -268,41 +263,101 @@ export default function LoginPage() {
           background: '#ffffff',
           borderRadius: '24px',
           padding: '2.5rem 2.25rem',
-          maxWidth: '460px',
+          maxWidth: '470px',
           width: '100%',
-          boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.08), 0 0 1px 1px rgba(15, 23, 42, 0.05)',
+          boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.1), 0 0 1px 1px rgba(15, 23, 42, 0.05)',
           border: '1px solid #e2e8f0',
         }}
       >
         {/* Brand Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', marginBottom: '1.75rem' }}>
           <div
             style={{
-              width: '42px',
-              height: '42px',
-              borderRadius: '12px',
+              width: '46px',
+              height: '46px',
+              borderRadius: '13px',
               background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: '#ffffff',
-              fontSize: '1.25rem',
-              boxShadow: '0 8px 18px rgba(16, 185, 129, 0.25)',
+              fontSize: '1.35rem',
+              boxShadow: '0 8px 18px rgba(16, 185, 129, 0.28)',
             }}
           >
             🔗
           </div>
           <div>
-            <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>
+            <span style={{ fontSize: '1.35rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px', display: 'block', lineHeight: 1.2 }}>
               FairConnect
             </span>
-            <span style={{ display: 'block', fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>
-              Passwordless Auth
+            <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 600 }}>
+              Email Verification Sign-In
             </span>
           </div>
         </div>
 
-        {/* Alerts */}
+        {/* Active Session Notification */}
+        {isAuthenticated && user && (
+          <div
+            style={{
+              background: '#f0fdf4',
+              border: '1.5px solid #86efac',
+              borderRadius: '14px',
+              padding: '0.85rem 1rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '0.75rem',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#166534' }}>
+                Active Session
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#15803d' }}>
+                Signed in as <strong>{user.name || user.email}</strong> ({user.role})
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.4rem' }}>
+              <button
+                type="button"
+                onClick={() => navigate(`/${user.role}/dashboard`)}
+                style={{
+                  background: '#15803d',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '0.35rem 0.65rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Dashboard →
+              </button>
+              <button
+                type="button"
+                onClick={() => logout()}
+                style={{
+                  background: '#fef2f2',
+                  color: '#b91c1c',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  padding: '0.35rem 0.65rem',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Global Error Banner */}
         {error && (
           <div
             role="alert"
@@ -324,6 +379,7 @@ export default function LoginPage() {
           </div>
         )}
 
+        {/* Global Success Banner */}
         {success && (
           <div
             role="status"
@@ -346,24 +402,24 @@ export default function LoginPage() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            SCREEN 1: EMAIL ENTRY (+ NAME & ROLE IF NEW)
+            SCREEN 1: EMAIL ADDRESS ENTRY & REGISTRATION
         ══════════════════════════════════════════════════════════════════ */}
         {screen === 'email' && (
           <div>
             <div style={{ marginBottom: '1.5rem' }}>
-              <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.4rem', letterSpacing: '-0.5px' }}>
-                {isNewUserMode ? 'Create your account' : 'Welcome back'}
+              <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.4rem', letterSpacing: '-0.4px' }}>
+                {isNewUserMode ? 'Create your account' : 'Sign in with Email'}
               </h1>
-              <p style={{ fontSize: '0.92rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
+              <p style={{ fontSize: '0.9rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
                 {isNewUserMode
-                  ? 'Sign up with your email to receive your real-time login code.'
-                  : 'Enter your email to receive an instant sign-in code.'}
+                  ? 'Enter your email to receive an instant verification code and get started.'
+                  : 'Enter your email address to receive a secure, passwordless login code.'}
               </p>
             </div>
 
             <form onSubmit={handleEmailSubmit} noValidate>
               {/* Email Input */}
-              <div style={{ marginBottom: '1.25rem' }}>
+              <div style={{ marginBottom: '1.15rem' }}>
                 <label
                   htmlFor="user-email-input"
                   style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: '#334155', marginBottom: '0.4rem' }}
@@ -379,13 +435,13 @@ export default function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@example.com"
+                    placeholder="e.g. employer@apexconstructions.com"
                     autoFocus
                     autoComplete="email"
                     required
                     style={{
                       width: '100%',
-                      padding: '0.75rem 1rem 0.75rem 2.6rem',
+                      padding: '0.8rem 1rem 0.8rem 2.65rem',
                       borderRadius: '12px',
                       border: '1.5px solid #cbd5e1',
                       fontSize: '0.95rem',
@@ -406,14 +462,67 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Conditional Name and Role if User is New */}
+              {/* Quick account suggestions for rapid testing */}
+              <div style={{ marginBottom: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Quick Fill:</span>
+                <button
+                  type="button"
+                  onClick={() => { setEmail('employer@apexconstructions.com'); setIsNewUserMode(false); }}
+                  style={{
+                    background: '#f1f5f9',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.72rem',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  🏢 Apex (Employer)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEmail('ramesh.patil@example.com'); setIsNewUserMode(false); }}
+                  style={{
+                    background: '#f1f5f9',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.72rem',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  👷 Ramesh (Worker)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEmail('admin@fairconnect.com'); setIsNewUserMode(false); }}
+                  style={{
+                    background: '#f1f5f9',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    padding: '0.2rem 0.5rem',
+                    fontSize: '0.72rem',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  🛡️ Admin
+                </button>
+              </div>
+
+              {/* Registration Extra Fields (Name & Role) */}
               {isNewUserMode && (
                 <div
                   style={{
                     background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
+                    border: '1.5px solid #e2e8f0',
                     borderRadius: '16px',
-                    padding: '1.2rem',
+                    padding: '1.25rem',
                     marginBottom: '1.25rem',
                   }}
                 >
@@ -434,15 +543,15 @@ export default function LoginPage() {
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="Ravi Kumar"
+                        placeholder="e.g. Ramesh Patil"
                         autoComplete="name"
                         required
                         style={{
                           width: '100%',
-                          padding: '0.65rem 0.85rem 0.65rem 2.5rem',
+                          padding: '0.7rem 0.85rem 0.7rem 2.45rem',
                           borderRadius: '10px',
                           border: '1.5px solid #cbd5e1',
-                          fontSize: '0.9rem',
+                          fontSize: '0.92rem',
                           color: '#0f172a',
                           background: '#ffffff',
                           outline: 'none',
@@ -451,12 +560,12 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* Role Selection */}
+                  {/* Role Choice */}
                   <div>
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.4rem' }}>
-                      I am joining as:
+                      Join as:
                     </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
                       <button
                         type="button"
                         id="role-worker-choice"
@@ -508,11 +617,11 @@ export default function LoginPage() {
                 disabled={loading || !email.trim()}
                 style={{
                   width: '100%',
-                  padding: '0.85rem 1.25rem',
+                  padding: '0.9rem 1.25rem',
                   borderRadius: '12px',
                   background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                   color: '#ffffff',
-                  fontSize: '0.98rem',
+                  fontSize: '1rem',
                   fontWeight: 700,
                   border: 'none',
                   cursor: loading || !email.trim() ? 'not-allowed' : 'pointer',
@@ -521,11 +630,11 @@ export default function LoginPage() {
                   transition: 'transform 0.15s, box-shadow 0.15s',
                 }}
               >
-                {loading ? 'Processing…' : isNewUserMode ? 'Send Verification Code →' : 'Continue with Email OTP →'}
+                {loading ? 'Sending Code…' : isNewUserMode ? 'Send Verification Code →' : 'Continue with Email OTP →'}
               </button>
             </form>
 
-            {/* Toggle new user / existing user */}
+            {/* Toggle Sign in / Register */}
             <div style={{ marginTop: '1.5rem', textAlign: 'center', borderTop: '1px solid #f1f5f9', paddingTop: '1.25rem' }}>
               {isNewUserMode ? (
                 <p style={{ margin: 0, fontSize: '0.875rem', color: '#64748b' }}>
@@ -538,7 +647,7 @@ export default function LoginPage() {
                     }}
                     style={{ background: 'none', border: 'none', color: '#10b981', fontWeight: 700, cursor: 'pointer', padding: 0 }}
                   >
-                    Sign in
+                    Sign in with email
                   </button>
                 </p>
               ) : (
@@ -561,11 +670,11 @@ export default function LoginPage() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            SCREEN 2: OTP ENTRY (FAT-FINGER FRIENDLY + TIMER)
+            SCREEN 2: 6-DIGIT EMAIL VERIFICATION CODE ENTRY
         ══════════════════════════════════════════════════════════════════ */}
         {screen === 'otp' && (
           <div>
-            {/* Back button */}
+            {/* Back Button */}
             <button
               type="button"
               id="back-to-email-btn"
@@ -592,44 +701,62 @@ export default function LoginPage() {
               Change email
             </button>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.4rem', letterSpacing: '-0.5px' }}>
-                We sent a code to
+            <div style={{ marginBottom: '1.25rem' }}>
+              <h1 style={{ fontSize: '1.55rem', fontWeight: 800, color: '#0f172a', margin: '0 0 0.35rem', letterSpacing: '-0.4px' }}>
+                Verify Your Email
               </h1>
               <p style={{ fontSize: '1rem', fontWeight: 700, color: '#10b981', margin: '0 0 0.25rem', wordBreak: 'break-all' }}>
                 {email}
               </p>
-              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0 }}>
-                Enter the 6-digit verification code below to sign in.
+              <p style={{ fontSize: '0.85rem', color: '#64748b', margin: 0, lineHeight: 1.5 }}>
+                Enter the 6-digit verification code sent to your email.
               </p>
             </div>
 
-            {/* Demo Mode Notice if real SMTP is not yet configured */}
+            {/* Dev Fallback Code Banner */}
             {devOtpCode && (
               <div
                 style={{
                   background: '#ecfdf5',
                   border: '1.5px solid #a7f3d0',
                   borderRadius: '14px',
-                  padding: '1rem',
-                  marginBottom: '1.5rem',
+                  padding: '0.85rem 1rem',
+                  marginBottom: '1.25rem',
                   textAlign: 'center',
                 }}
               >
-                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#047857', marginBottom: '0.25rem' }}>
-                  🔑 Real-Time Code Generated:
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#047857', marginBottom: '0.2rem' }}>
+                  🔑 Verification Code:
                 </div>
-                <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#065f46', letterSpacing: '6px' }}>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#065f46', letterSpacing: '6px' }}>
                   {devOtpCode}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#059669', marginTop: '0.25rem' }}>
-                  (Auto-filled for testing. Add SMTP credentials in server/.env for inbox delivery)
-                </div>
+                <button
+                  type="button"
+                  id="auto-fill-otp-btn"
+                  onClick={() => {
+                    setOtpDigits(devOtpCode.split(''));
+                    handleVerifyOtp(devOtpCode);
+                  }}
+                  style={{
+                    marginTop: '0.45rem',
+                    background: '#059669',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '0.35rem 0.85rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  ⚡ Auto-fill & Verify →
+                </button>
               </div>
             )}
 
-            {/* Large Fat-Finger 6-Digit OTP Inputs */}
-            <div style={{ marginBottom: '1.5rem' }}>
+            {/* 6-Digit Fat-Finger Code Inputs */}
+            <div style={{ marginBottom: '1.25rem' }}>
               <div
                 style={{
                   display: 'flex',
@@ -650,17 +777,17 @@ export default function LoginPage() {
                     onChange={(e) => handleDigitChange(idx, e.target.value)}
                     onKeyDown={(e) => handleDigitKeyDown(idx, e)}
                     style={{
-                      width: '52px',
-                      height: '62px',
-                      borderRadius: '14px',
+                      width: '48px',
+                      height: '58px',
+                      borderRadius: '12px',
                       border: digit ? '2px solid #10b981' : '2px solid #cbd5e1',
                       background: digit ? '#f0fdf4' : '#ffffff',
                       textAlign: 'center',
-                      fontSize: '1.75rem',
+                      fontSize: '1.65rem',
                       fontWeight: 800,
                       color: '#0f172a',
                       outline: 'none',
-                      transition: 'all 0.15s ease',
+                      transition: 'border-color 0.15s, box-shadow 0.15s',
                     }}
                     onFocus={(e) => {
                       e.target.style.borderColor = '#10b981';
@@ -675,17 +802,17 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* 5-Minute Countdown Timer */}
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            {/* Countdown Timer */}
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem' }}>
               {timerActive ? (
-                <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
                   Code valid for:{' '}
                   <strong style={{ color: countdown < 60 ? '#e11d48' : '#059669', fontWeight: 700 }}>
                     {formatTimer(countdown)}
                   </strong>
                 </div>
               ) : (
-                <div style={{ fontSize: '0.875rem', color: '#e11d48', fontWeight: 600 }}>
+                <div style={{ fontSize: '0.85rem', color: '#e11d48', fontWeight: 600 }}>
                   Code expired. Please request a new code.
                 </div>
               )}
@@ -703,7 +830,7 @@ export default function LoginPage() {
                 borderRadius: '12px',
                 background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                 color: '#ffffff',
-                fontSize: '1.05rem',
+                fontSize: '1rem',
                 fontWeight: 800,
                 border: 'none',
                 cursor: loading || otpDigits.join('').length !== 6 ? 'not-allowed' : 'pointer',
@@ -712,7 +839,7 @@ export default function LoginPage() {
                 marginBottom: '1rem',
               }}
             >
-              {loading ? 'Verifying…' : 'Verify & Enter →'}
+              {loading ? 'Verifying Code…' : 'Verify & Enter FairConnect →'}
             </button>
 
             {/* Resend Link */}
@@ -726,7 +853,7 @@ export default function LoginPage() {
                   background: 'none',
                   border: 'none',
                   color: timerActive && countdown > 240 ? '#94a3b8' : '#0284c7',
-                  fontSize: '0.875rem',
+                  fontSize: '0.85rem',
                   fontWeight: 600,
                   cursor: timerActive && countdown > 240 ? 'not-allowed' : 'pointer',
                 }}
