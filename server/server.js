@@ -1,4 +1,6 @@
 require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -75,7 +77,7 @@ async function seedInitialUsersIfEmpty() {
           isVerified: true,
           isEmailVerified: true,
           email: 'ramesh.patil@example.com',
-          skills: ['masonry', 'construction'],
+          skills: ['masonry'],
           primarySkill: 'masonry',
           city: 'Kolhapur',
           location: { type: 'Point', coordinates: [74.24, 16.70] },
@@ -89,8 +91,8 @@ async function seedInitialUsersIfEmpty() {
           isVerified: false,
           isEmailVerified: true,
           email: 'sunita.deshmukh@example.com',
-          skills: ['cleaning', 'cooking'],
-          primarySkill: 'cooking',
+          skills: ['plumbing'],
+          primarySkill: 'plumbing',
           city: 'Kolhapur',
           location: { type: 'Point', coordinates: [74.25, 16.71] },
           idCardUrl: 'https://placehold.co/600x400/png?text=Sunita+Deshmukh+Aadhaar+Card',
@@ -106,7 +108,7 @@ async function seedInitialUsersIfEmpty() {
           isVerified: false,
           isEmailVerified: true,
           email: 'anand.shinde@example.com',
-          skills: ['plumbing', 'electrical'],
+          skills: ['plumbing', 'electrician'],
           primarySkill: 'plumbing',
           city: 'Kolhapur',
           location: { type: 'Point', coordinates: [74.23, 16.69] },
@@ -123,8 +125,8 @@ async function seedInitialUsersIfEmpty() {
           isVerified: true,
           isEmailVerified: true,
           email: 'ganesh.jadhav@example.com',
-          skills: ['carpentry', 'welding'],
-          primarySkill: 'carpentry',
+          skills: ['electrician', 'masonry'],
+          primarySkill: 'electrician',
           city: 'Sangli',
           location: { type: 'Point', coordinates: [74.58, 16.85] },
           totalJobsCompleted: 9,
@@ -168,10 +170,10 @@ async function seedInitialUsersIfEmpty() {
           employerId: employer2._id,
         },
         {
-          title: 'Residential Interior Painting & Finishing',
-          description: 'Skilled painters needed for a 2-BHK apartment near Rajarampuri. Materials provided.',
-          requiredSkill: 'painting',
-          dailyWage: 750,
+          title: 'Residential Electrical Rewiring & Inverter Setup',
+          description: 'Licensed electrician needed for complete flat rewiring, MCB board installation, and inverter connection.',
+          requiredSkill: 'electrician',
+          dailyWage: 900,
           city: 'Kolhapur',
           location: { type: 'Point', coordinates: [74.249, 16.711] },
           status: 'open',
@@ -179,10 +181,10 @@ async function seedInitialUsersIfEmpty() {
           employerId: employer1._id,
         },
         {
-          title: 'Commercial Electrical & Wiring Installation',
+          title: 'Commercial Electrical & Panel Wiring',
           description: 'Electrician needed for retail shop fit-out and main circuit distribution near Tarabai Park.',
-          requiredSkill: 'electrical',
-          dailyWage: 900,
+          requiredSkill: 'electrician',
+          dailyWage: 950,
           city: 'Kolhapur',
           location: { type: 'Point', coordinates: [74.262, 16.720] },
           status: 'open',
@@ -190,10 +192,10 @@ async function seedInitialUsersIfEmpty() {
           employerId: employer2._id,
         },
         {
-          title: 'Furniture Carpentry & Door Fitting',
-          description: 'Experienced carpenter required for custom wardrobes and wooden frame fittings.',
-          requiredSkill: 'carpentry',
-          dailyWage: 800,
+          title: 'Brick Wall Construction & Exterior Plastering',
+          description: 'Skilled mason required for boundary wall brick laying and waterproof cement plastering.',
+          requiredSkill: 'masonry',
+          dailyWage: 850,
           city: 'Kolhapur',
           location: { type: 'Point', coordinates: [74.285, 16.735] },
           status: 'open',
@@ -201,10 +203,10 @@ async function seedInitialUsersIfEmpty() {
           employerId: employer1._id,
         },
         {
-          title: 'Heavy Structural Welding & Fabrication',
-          description: 'Certified arc welder needed for warehouse shed fabrication work in Gokul Shirgaon MIDC.',
-          requiredSkill: 'welding',
-          dailyWage: 1050,
+          title: 'Apartment Bathroom & Drainage Plumbing',
+          description: 'Certified plumber needed for CPVC line layout, sanitary fittings, and main drain pipe connection.',
+          requiredSkill: 'plumbing',
+          dailyWage: 950,
           city: 'Kolhapur',
           location: { type: 'Point', coordinates: [74.310, 16.760] },
           status: 'open',
@@ -212,10 +214,10 @@ async function seedInitialUsersIfEmpty() {
           employerId: employer2._id,
         },
         {
-          title: 'Farmhouse Landscaping & Tree Care',
-          description: 'Gardener needed for orchard trimming, grass cutting, and irrigation management.',
-          requiredSkill: 'gardening',
-          dailyWage: 650,
+          title: 'Heritage Stone Masonry & Restoration',
+          description: 'Artisan mason needed for traditional basalt stone wall refurbishment and mortar pointing.',
+          requiredSkill: 'masonry',
+          dailyWage: 900,
           city: 'Kolhapur',
           location: { type: 'Point', coordinates: [74.360, 16.780] },
           status: 'open',
@@ -223,10 +225,10 @@ async function seedInitialUsersIfEmpty() {
           employerId: employer1._id,
         },
         {
-          title: 'Warehouse Turmeric Bag Loading & Stacking',
-          description: 'Active loaders needed for agricultural commodity transport in market yard.',
-          requiredSkill: 'cleaning',
-          dailyWage: 700,
+          title: 'Warehouse Main Water Tank Pipeline Setup',
+          description: 'Plumber required for 5000L overhead water tank plumbing, pump connection, and pressure valve fittings.',
+          requiredSkill: 'plumbing',
+          dailyWage: 850,
           city: 'Sangli',
           location: { type: 'Point', coordinates: [74.582, 16.853] },
           status: 'closed',
@@ -248,7 +250,7 @@ async function seedInitialUsersIfEmpty() {
         },
       ]);
 
-      console.log('✅ Initial demo platform data seeded: Admin, 4 Workers (2 Pending ID Reviews), 2 Employers, 8 Jobs (1 Flagged, 1 Closed)');
+      console.log('✅ Initial demo platform data seeded: Admin, 4 Workers (2 Pending ID Reviews), 2 Employers, 8 Jobs (Plumbing, Electrician, Masonry)');
     }
   } catch (seedErr) {
     console.warn('⚠️  Auto-seed notice:', seedErr.message);
@@ -270,16 +272,38 @@ async function startServer() {
   }
 
   if (!connected) {
-    console.log('📦 Starting in-memory MongoDB instance for local development...');
+    console.log('📦 Starting persistent local MongoDB instance for development...');
     try {
       const { MongoMemoryServer } = require('mongodb-memory-server');
-      const mongod = await MongoMemoryServer.create();
-      mongoUri = mongod.getUri();
+      const dbPath = path.join(__dirname, '.mongodb_data');
+      if (!fs.existsSync(dbPath)) fs.mkdirSync(dbPath, { recursive: true });
+
+      let mongod;
+      try {
+        mongod = await MongoMemoryServer.create({
+          instance: {
+            port: 27017,
+            dbName: 'fairconnect',
+            dbPath,
+            storageEngine: 'wiredTiger',
+          },
+        });
+      } catch (_portErr) {
+        mongod = await MongoMemoryServer.create({
+          instance: {
+            dbName: 'fairconnect',
+            dbPath,
+            storageEngine: 'wiredTiger',
+          },
+        });
+      }
+      mongoUri = mongod.getUri('fairconnect');
       await mongoose.connect(mongoUri);
-      console.log('✅  Embedded In-Memory MongoDB connected at', mongoUri);
+      console.log('✅  Persistent Local MongoDB connected at', mongoUri);
+      console.log(`🧭  To view in MongoDB Compass, connect to:\n    👉 ${mongoUri}\n`);
       connected = true;
     } catch (memErr) {
-      console.error('❌ Failed to start in-memory MongoDB:', memErr.message);
+      console.error('❌ Failed to start persistent MongoDB:', memErr.message);
       process.exit(1);
     }
   }

@@ -46,6 +46,10 @@ export default function LoginPage() {
   const isRegisterRoute = location.pathname.includes('register');
   const [isNewUserMode, setIsNewUserMode] = useState(isRegisterRoute);
 
+  useEffect(() => {
+    setIsNewUserMode(location.pathname.includes('register'));
+  }, [location.pathname]);
+
   // Form Fields
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -95,19 +99,45 @@ export default function LoginPage() {
     try {
       if (isNewUserMode) {
         // Register flow
+        // If name is not provided, first check if user already has an existing account!
         if (!name.trim()) {
-          setError('Please enter your full name.');
-          setLoading(false);
-          return;
+          try {
+            const { data } = await axios.post('/api/auth/login', {
+              email: trimmedEmail,
+            });
+            setIsNewUserMode(false);
+            transitionToOtpScreen(data, trimmedEmail);
+            return;
+          } catch (loginErr) {
+            if (loginErr.response?.status === 404) {
+              setError('Please enter your full name to create your account.');
+              setLoading(false);
+              return;
+            }
+            throw loginErr;
+          }
         }
 
-        const { data } = await axios.post('/api/auth/register', {
-          name: name.trim(),
-          email: trimmedEmail,
-          role,
-        });
+        try {
+          const { data } = await axios.post('/api/auth/register', {
+            name: name.trim(),
+            email: trimmedEmail,
+            role,
+          });
 
-        transitionToOtpScreen(data, trimmedEmail);
+          transitionToOtpScreen(data, trimmedEmail);
+        } catch (regErr) {
+          if (regErr.response?.status === 409) {
+            // Already registered! Seamlessly switch to sign-in and send login OTP
+            setIsNewUserMode(false);
+            const { data } = await axios.post('/api/auth/login', {
+              email: trimmedEmail,
+            });
+            transitionToOtpScreen(data, trimmedEmail);
+            return;
+          }
+          throw regErr;
+        }
       } else {
         // Login flow
         try {
@@ -535,6 +565,7 @@ export default function LoginPage() {
                     onClick={() => {
                       setIsNewUserMode(false);
                       setError('');
+                      navigate('/login', { replace: true });
                     }}
                     style={{ background: 'none', border: 'none', color: '#10b981', fontWeight: 700, cursor: 'pointer', padding: 0 }}
                   >
@@ -549,6 +580,7 @@ export default function LoginPage() {
                     onClick={() => {
                       setIsNewUserMode(true);
                       setError('');
+                      navigate('/register', { replace: true });
                     }}
                     style={{ background: 'none', border: 'none', color: '#10b981', fontWeight: 700, cursor: 'pointer', padding: 0 }}
                   >

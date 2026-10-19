@@ -259,10 +259,16 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
       return res.status(403).json({ message: 'You do not own this job.' });
     }
 
-    // Find all verified workers who have the required skill
+    // Find all verified workers who have the required skill (accounting for aliases)
+    const skillVariants = [job.requiredSkill];
+    if (job.requiredSkill === 'electrician') skillVariants.push('electrical');
+    if (job.requiredSkill === 'electrical') skillVariants.push('electrician');
+    if (job.requiredSkill === 'masonry') skillVariants.push('masonary');
+    if (job.requiredSkill === 'masonary') skillVariants.push('masonry');
+
     const workers = await User.find({
       role:   'worker',
-      skills: job.requiredSkill,
+      skills: { $in: skillVariants },
     })
       .select('name skills primarySkill isVerified city lastWorkedDate totalJobsCompleted')
       .lean();
@@ -299,7 +305,12 @@ router.get('/my-scores', isWorker, async (req, res) => {
       .lean();
 
     const scored = jobs.map((job) => {
-      const isSkillMatch = worker.skills.includes(job.requiredSkill);
+      const isSkillMatch = (worker.skills || []).some((s) => {
+        if (s === job.requiredSkill) return true;
+        if ((s === 'electrician' || s === 'electrical') && (job.requiredSkill === 'electrician' || job.requiredSkill === 'electrical')) return true;
+        if ((s === 'masonry' || s === 'masonary') && (job.requiredSkill === 'masonry' || job.requiredSkill === 'masonary')) return true;
+        return false;
+      });
       const fairnessScore = isSkillMatch ? calcFairnessScore(worker, job) : 0;
       return { ...job, fairnessScore, isSkillMatch };
     });

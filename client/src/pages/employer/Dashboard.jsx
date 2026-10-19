@@ -6,18 +6,9 @@ const API = 'http://localhost:5000';
 
 // ── Skill catalogue — must stay in sync with Job model + CompleteProfile ──────
 const SKILLS = [
-  { id: 'construction', label: 'Construction', icon: '🏗️' },
-  { id: 'carpentry',    label: 'Carpentry',    icon: '🪚' },
-  { id: 'plumbing',     label: 'Plumbing',     icon: '🔧' },
-  { id: 'electrical',   label: 'Electrical',   icon: '⚡' },
-  { id: 'cleaning',     label: 'Cleaning',     icon: '🧹' },
-  { id: 'driving',      label: 'Driving',      icon: '🚗' },
-  { id: 'painting',     label: 'Painting',     icon: '🎨' },
-  { id: 'welding',      label: 'Welding',      icon: '🔥' },
-  { id: 'masonry',      label: 'Masonry',      icon: '🧱' },
-  { id: 'gardening',    label: 'Gardening',    icon: '🌱' },
-  { id: 'security',     label: 'Security',     icon: '🛡️' },
-  { id: 'cooking',      label: 'Cooking',      icon: '👨‍🍳' },
+  { id: 'plumbing',    label: 'Plumbing',    icon: '🔧' },
+  { id: 'electrician', label: 'Electrician', icon: '⚡' },
+  { id: 'masonry',     label: 'Masonry',     icon: '🧱' },
 ];
 
 const EMPTY_FORM = { title: '', description: '', requiredSkill: '', dailyWage: '', city: '' };

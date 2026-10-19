@@ -12,9 +12,11 @@ function formatDate(iso) {
 }
 
 const SKILL_ICONS = {
-  construction: '🏗️', carpentry: '🪚', plumbing: '🔧', electrical: '⚡',
-  cleaning: '🧹', driving: '🚗', painting: '🎨', welding: '🔥',
-  masonry: '🧱', gardening: '🌱', security: '🛡️', cooking: '👨‍🍳',
+  plumbing: '🔧',
+  electrician: '⚡',
+  electrical: '⚡', // alias
+  masonry: '🧱',
+  masonary: '🧱',   // alias
 };
 
 const COMMON_REJECTION_REASONS = [

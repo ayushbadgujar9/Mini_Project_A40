@@ -2,18 +2,11 @@ const mongoose = require('mongoose');
 
 // ── Skill IDs must stay in sync with the frontend SKILLS catalogue ─────────────
 const SKILL_IDS = [
-  'construction',
-  'carpentry',
   'plumbing',
-  'electrical',
-  'cleaning',
-  'driving',
-  'painting',
-  'welding',
+  'electrician',
+  'electrical', // alias
   'masonry',
-  'gardening',
-  'security',
-  'cooking',
+  'masonary',   // alias
 ];
 
 // ──────────────────────────────────────────────────────────────────────────────

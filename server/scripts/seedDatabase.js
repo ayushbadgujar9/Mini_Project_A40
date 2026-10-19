@@ -39,20 +39,22 @@ async function seedDatabase() {
 
     const admin = new User({
       name: 'Platform Admin',
+      email: 'akulkarni.1011@gmail.com',
       phoneNumber: '+919000000000',
       adminId: 'ADMIN001',
-      password: 'admin123', // Mongoose pre-save hook automatically hashes with bcrypt
+      password: 'admin123',
       role: 'admin',
       verificationStatus: 'verified',
       isVerified: true,
+      isEmailVerified: true,
     });
     await admin.save();
 
     console.log('  ✅ Admin Created:');
     console.log('     Name       : Platform Admin');
+    console.log('     Email      : akulkarni.1011@gmail.com');
     console.log('     Phone      : +919000000000');
     console.log('     Admin ID   : ADMIN001');
-    console.log('     Password   : admin123');
     console.log('     Role       : admin');
 
     // ── 3. Seed Pending Worker Verifications ─────────────────────────────────
@@ -61,13 +63,15 @@ async function seedDatabase() {
     const workerDataList = [
       {
         name: 'Ramesh Patil',
+        email: 'ramesh.patil@example.com',
         phoneNumber: '+919822012345',
         password: 'worker123',
         role: 'worker',
-        verificationStatus: 'pending',
-        isVerified: false,
-        skills: ['Masonry', 'Construction'],
-        primarySkill: 'Masonry',
+        verificationStatus: 'verified',
+        isVerified: true,
+        isEmailVerified: true,
+        skills: ['masonry'],
+        primarySkill: 'masonry',
         city: 'Kolhapur',
         location: { type: 'Point', coordinates: [74.24, 16.70] },
         idCardUrl: 'https://placehold.co/600x400?text=Worker+ID+Card+1',
@@ -81,13 +85,15 @@ async function seedDatabase() {
       },
       {
         name: 'Sunita Deshmukh',
+        email: 'sunita.deshmukh@example.com',
         phoneNumber: '+919822054321',
         password: 'worker123',
         role: 'worker',
         verificationStatus: 'pending',
         isVerified: false,
-        skills: ['Housekeeping', 'Cooking'],
-        primarySkill: 'Cooking',
+        isEmailVerified: true,
+        skills: ['plumbing'],
+        primarySkill: 'plumbing',
         city: 'Kolhapur',
         location: { type: 'Point', coordinates: [74.25, 16.71] },
         idCardUrl: 'https://placehold.co/600x400?text=Worker+ID+Card+2',
@@ -101,13 +107,15 @@ async function seedDatabase() {
       },
       {
         name: 'Anand Shinde',
+        email: 'anand.shinde@example.com',
         phoneNumber: '+919822099887',
         password: 'worker123',
         role: 'worker',
         verificationStatus: 'pending',
         isVerified: false,
-        skills: ['Plumbing', 'Electrical'],
-        primarySkill: 'Plumbing',
+        isEmailVerified: true,
+        skills: ['plumbing', 'electrician'],
+        primarySkill: 'plumbing',
         city: 'Kolhapur',
         location: { type: 'Point', coordinates: [74.23, 16.69] },
         idCardUrl: 'https://placehold.co/600x400?text=Worker+ID+Card+3',
@@ -118,6 +126,20 @@ async function seedDatabase() {
           ocrMatchScore: '91%',
         },
         ocrExtractedText: 'ELECTION COMMISSION OF INDIA - VOTER ID\nName: Anand Shinde\nDOB: 10/11/1988\nID Ref: MOCK_DOC_1003\nMatch Score: 91%',
+      },
+      {
+        name: 'Ganesh Jadhav',
+        email: 'ganesh.jadhav@example.com',
+        phoneNumber: '+919822112233',
+        password: 'worker123',
+        role: 'worker',
+        verificationStatus: 'verified',
+        isVerified: true,
+        isEmailVerified: true,
+        skills: ['electrician', 'masonry'],
+        primarySkill: 'electrician',
+        city: 'Sangli',
+        location: { type: 'Point', coordinates: [74.58, 16.85] },
       },
     ];
 
@@ -134,11 +156,13 @@ async function seedDatabase() {
 
     const employer = new User({
       name: 'Apex Constructions',
+      email: 'contact@apexconstructions.com',
       phoneNumber: '+919811122233',
       password: 'employer123',
       role: 'employer',
       verificationStatus: 'verified',
       isVerified: true,
+      isEmailVerified: true,
       city: 'Kolhapur',
       location: { type: 'Point', coordinates: [74.24, 16.70] },
     });
@@ -159,10 +183,10 @@ async function seedDatabase() {
         employerId: employer._id,
       },
       {
-        title: 'Residential Interior Painting & Finishing',
-        description: 'Skilled painters needed for a 2-BHK apartment near Rajarampuri.',
-        requiredSkill: 'painting',
-        dailyWage: 750,
+        title: 'Residential Electrical Rewiring & Inverter Setup',
+        description: 'Licensed electrician needed for complete flat rewiring, MCB board installation, and inverter connection.',
+        requiredSkill: 'electrician',
+        dailyWage: 900,
         city: 'Kolhapur',
         location: { type: 'Point', coordinates: [74.249, 16.711] }, // ~1.5 km away
         status: 'open',
@@ -172,8 +196,8 @@ async function seedDatabase() {
       {
         title: 'Commercial Electrical & Wiring Installation',
         description: 'Electrician needed for retail shop fit-out near Tarabai Park.',
-        requiredSkill: 'electrical',
-        dailyWage: 900,
+        requiredSkill: 'electrician',
+        dailyWage: 950,
         city: 'Kolhapur',
         location: { type: 'Point', coordinates: [74.262, 16.720] }, // ~3.2 km away
         status: 'open',
@@ -181,10 +205,10 @@ async function seedDatabase() {
         employerId: employer._id,
       },
       {
-        title: 'Furniture Carpentry & Door Fitting',
-        description: 'Experienced carpenter required for custom wardrobes and fittings in Shiroli.',
-        requiredSkill: 'carpentry',
-        dailyWage: 800,
+        title: 'Boundary Brick Wall Construction & Plastering',
+        description: 'Experienced mason required for boundary wall brick laying and cement plastering.',
+        requiredSkill: 'masonry',
+        dailyWage: 850,
         city: 'Kolhapur',
         location: { type: 'Point', coordinates: [74.285, 16.735] }, // ~6.1 km away
         status: 'open',
@@ -192,9 +216,9 @@ async function seedDatabase() {
         employerId: employer._id,
       },
       {
-        title: 'Heavy Structural Welding & Fabrication',
-        description: 'Certified arc welder needed for shed fabrication work in Gokul Shirgaon MIDC.',
-        requiredSkill: 'welding',
+        title: 'Commercial Complex Water Supply & Drainage',
+        description: 'Certified plumber needed for multi-floor PVC water supply and drainage line layout.',
+        requiredSkill: 'plumbing',
         dailyWage: 1050,
         city: 'Kolhapur',
         location: { type: 'Point', coordinates: [74.310, 16.760] }, // ~10.5 km away
@@ -203,10 +227,10 @@ async function seedDatabase() {
         employerId: employer._id,
       },
       {
-        title: 'Garden Landscaping & Pruning',
-        description: 'Gardener needed for farmhouse landscaping on the outskirts of Uchgaon.',
-        requiredSkill: 'gardening',
-        dailyWage: 650,
+        title: 'Stone Retaining Wall Masonry Work',
+        description: 'Mason needed for farmhouse boundary stone masonry on the outskirts of Uchgaon.',
+        requiredSkill: 'masonry',
+        dailyWage: 850,
         city: 'Kolhapur',
         location: { type: 'Point', coordinates: [74.360, 16.780] }, // ~15.8 km away
         status: 'open',
@@ -215,10 +239,10 @@ async function seedDatabase() {
       },
       // ── Sangli Jobs ────────────────────────────────────────────────────────
       {
-        title: 'Sangli Turmeric Market Warehouse Loader',
-        description: 'Need active workers for turmeric bag loading and stacking in Sangli APMC market.',
-        requiredSkill: 'cleaning',
-        dailyWage: 700,
+        title: 'Sangli APMC Market Water Pipeline Fitting',
+        description: 'Plumber required for municipal water connection and valve fitting in market yard.',
+        requiredSkill: 'plumbing',
+        dailyWage: 850,
         city: 'Sangli',
         location: { type: 'Point', coordinates: [74.582, 16.853] }, // Sangli center
         status: 'open',
@@ -226,10 +250,10 @@ async function seedDatabase() {
         employerId: employer._id,
       },
       {
-        title: 'Sangli Textile Factory Woodwork & Fitting',
-        description: 'Skilled carpentry and wooden frame repair for local weaving unit in Sangli.',
-        requiredSkill: 'carpentry',
-        dailyWage: 800,
+        title: 'Sangli Textile Factory Main Board Wiring',
+        description: 'Electrician needed for three-phase line distribution and capacitor bank setup.',
+        requiredSkill: 'electrician',
+        dailyWage: 950,
         city: 'Sangli',
         location: { type: 'Point', coordinates: [74.591, 16.859] }, // ~1.2 km from Sangli center
         status: 'open',
@@ -240,7 +264,7 @@ async function seedDatabase() {
       {
         title: 'Pune High-Rise Construction Site Mason',
         description: 'Skilled brick masonry workers needed for new commercial tower in Pune.',
-        requiredSkill: 'construction',
+        requiredSkill: 'masonry',
         dailyWage: 950,
         city: 'Pune',
         location: { type: 'Point', coordinates: [73.858, 18.522] }, // Pune center / Shivajinagar
@@ -249,9 +273,9 @@ async function seedDatabase() {
         employerId: employer._id,
       },
       {
-        title: 'Pune Industrial Fabrication & Welder',
-        description: 'Urgent requirement for arc welders at industrial manufacturing unit in Pune.',
-        requiredSkill: 'welding',
+        title: 'Pune Industrial Substation Electrician',
+        description: 'Urgent requirement for industrial electricians at manufacturing unit in Pune.',
+        requiredSkill: 'electrician',
         dailyWage: 1100,
         city: 'Pune',
         location: { type: 'Point', coordinates: [73.845, 18.515] }, // ~1.5 km from Pune center
@@ -261,10 +285,10 @@ async function seedDatabase() {
       },
       // ── Jalgaon Jobs ───────────────────────────────────────────────────────
       {
-        title: 'Jalgaon Banana Farm Harvest & Sorting Specialist',
-        description: 'Experienced agricultural workers needed for harvest, packaging and tree care.',
-        requiredSkill: 'gardening',
-        dailyWage: 650,
+        title: 'Jalgaon Agricultural Drip Irrigation Plumbing',
+        description: 'Experienced plumber needed for agricultural pump installation and drip irrigation lines.',
+        requiredSkill: 'plumbing',
+        dailyWage: 750,
         city: 'Jalgaon',
         location: { type: 'Point', coordinates: [75.564, 21.009] }, // Jalgaon center
         status: 'open',
@@ -274,7 +298,7 @@ async function seedDatabase() {
       {
         title: 'Jalgaon Commercial Complex Electrician',
         description: 'Licensed electrician needed for commercial wiring and transformer maintenance.',
-        requiredSkill: 'electrical',
+        requiredSkill: 'electrician',
         dailyWage: 850,
         city: 'Jalgaon',
         location: { type: 'Point', coordinates: [75.560, 21.005] }, // Jalgaon center

@@ -10,18 +10,9 @@ const API = 'http://localhost:5000';
 
 // ── Skill catalogue ───────────────────────────────────────────────────────────
 const SKILLS = [
-  { id: 'construction', label: 'Construction', icon: '🏗️' },
-  { id: 'carpentry',    label: 'Carpentry',    icon: '🪚' },
-  { id: 'plumbing',     label: 'Plumbing',     icon: '🔧' },
-  { id: 'electrical',   label: 'Electrical',   icon: '⚡' },
-  { id: 'cleaning',     label: 'Cleaning',     icon: '🧹' },
-  { id: 'driving',      label: 'Driving',      icon: '🚗' },
-  { id: 'painting',     label: 'Painting',     icon: '🎨' },
-  { id: 'welding',      label: 'Welding',      icon: '🔥' },
-  { id: 'masonry',      label: 'Masonry',      icon: '🧱' },
-  { id: 'gardening',    label: 'Gardening',    icon: '🌱' },
-  { id: 'security',     label: 'Security',     icon: '🛡️' },
-  { id: 'cooking',      label: 'Cooking',      icon: '👨‍🍳' },
+  { id: 'plumbing',    label: 'Plumbing',    icon: '🔧' },
+  { id: 'electrician', label: 'Electrician', icon: '⚡' },
+  { id: 'masonry',     label: 'Masonry',     icon: '🧱' },
 ];
 
 export default function WorkerDashboard() {
@@ -237,7 +228,7 @@ export default function WorkerDashboard() {
           >
             <div className="prompt-card-text" style={{ textAlign: 'left' }}>
               <h3>🚀 Complete Your Profile</h3>
-              <p>Add your skills and verify your email via real-time OTP to unlock job opportunities and get a Verified badge.</p>
+              <p>Add your skills and upload your government ID for AI OCR verification to unlock job opportunities and boost your fairness score.</p>
             </div>
             <span className="prompt-card-arrow">→</span>
           </button>
