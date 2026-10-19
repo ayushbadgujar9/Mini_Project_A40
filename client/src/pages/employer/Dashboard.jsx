@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import PostJobForm from '../../components/PostJobForm';
 
 const API = 'http://localhost:5000';
 
@@ -11,8 +12,6 @@ const SKILLS = [
   { id: 'masonry',     label: 'Masonry',     icon: '🧱' },
 ];
 
-const EMPTY_FORM = { title: '', description: '', requiredSkill: '', dailyWage: '', city: '' };
-
 export default function EmployerDashboard() {
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
@@ -20,11 +19,6 @@ export default function EmployerDashboard() {
   // ── My posted jobs ─────────────────────────────────────────────────────────
   const [myJobs,      setMyJobs]      = useState([]);
   const [jobsLoading, setJobsLoading] = useState(true);
-
-  // ── Post-job form ──────────────────────────────────────────────────────────
-  const [form,        setForm]        = useState(EMPTY_FORM);
-  const [submitting,  setSubmitting]  = useState(false);
-  const [formMsg,     setFormMsg]     = useState(null); // { type, text }
 
   // ── Fetch employer's own jobs ──────────────────────────────────────────────
   const fetchMyJobs = useCallback(async () => {
@@ -47,51 +41,8 @@ export default function EmployerDashboard() {
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleLogout = () => { logout(); navigate('/login', { replace: true }); };
 
-  const handleChange = (e) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
-    setFormMsg(null);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const { title, description, requiredSkill, dailyWage, city } = form;
-    if (!title.trim() || !description.trim() || !requiredSkill || !dailyWage) {
-      setFormMsg({ type: 'error', text: 'Please fill in all fields.' });
-      return;
-    }
-    if (Number(dailyWage) < 1) {
-      setFormMsg({ type: 'error', text: 'Daily wage must be at least ₹1.' });
-      return;
-    }
-    setSubmitting(true);
-    setFormMsg(null);
-    try {
-      const res = await fetch(`${API}/api/jobs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-          requiredSkill,
-          dailyWage: Number(dailyWage),
-          city: city.trim() || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-      setForm(EMPTY_FORM);
-      setMyJobs((prev) => [data.job, ...prev]);
-      // → Navigate directly to the Suggested Workers screen
-      navigate(`/employer/jobs/${data.job._id}/suggested`);
-    } catch (err) {
-      setFormMsg({ type: 'error', text: err.message || 'Failed to post job.' });
-      setSubmitting(false);
-    }
-  };
-
   const openCount   = myJobs.filter((j) => j.status === 'open').length;
   const closedCount = myJobs.filter((j) => j.status === 'closed').length;
-  const descLen     = form.description.length;
 
   return (
     <div className="dashboard-page">
@@ -135,130 +86,13 @@ export default function EmployerDashboard() {
           </div>
         </div>
 
-        <form id="post-job-form" className="post-job-form" onSubmit={handleSubmit} noValidate>
-          {/* Row 1: Title + Skill */}
-          <div className="pjf-row">
-            <div className="form-group" style={{ flex: 2 }}>
-              <label className="form-label" htmlFor="job-title">Job Title</label>
-              <div className="input-wrapper">
-                <span className="input-icon">💼</span>
-                <input
-                  id="job-title"
-                  name="title"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Site Helper Needed"
-                  maxLength={100}
-                  value={form.title}
-                  onChange={handleChange}
-                  disabled={submitting}
-                />
-              </div>
-            </div>
-
-            <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label" htmlFor="job-skill">Required Skill</label>
-              <div className="input-wrapper">
-                <span className="input-icon">🛠️</span>
-                <select
-                  id="job-skill"
-                  name="requiredSkill"
-                  className="form-select"
-                  value={form.requiredSkill}
-                  onChange={handleChange}
-                  disabled={submitting}
-                >
-                  <option value="" disabled>Select a skill…</option>
-                  {SKILLS.map((s) => (
-                    <option key={s.id} value={s.id}>{s.icon} {s.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="form-group" style={{ flex: 1 }}>
-              <label className="form-label" htmlFor="job-city">Job City / Location</label>
-              <div className="input-wrapper">
-                <span className="input-icon">📍</span>
-                <input
-                  id="job-city"
-                  name="city"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Mumbai"
-                  maxLength={60}
-                  value={form.city}
-                  onChange={handleChange}
-                  disabled={submitting}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Row 2: Description */}
-          <div className="form-group">
-            <label className="form-label" htmlFor="job-description">
-              Description
-              <span style={{ float: 'right', fontWeight: 400, color: descLen > 900 ? '#f43f5e' : '#475569' }}>
-                {descLen}/1000
-              </span>
-            </label>
-            <textarea
-              id="job-description"
-              name="description"
-              className="form-input pjf-textarea"
-              placeholder="Describe the job, working hours, location, requirements…"
-              maxLength={1000}
-              rows={4}
-              value={form.description}
-              onChange={handleChange}
-              disabled={submitting}
-            />
-          </div>
-
-          {/* Row 3: Wage + Submit */}
-          <div className="pjf-row pjf-row-bottom">
-            <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-              <label className="form-label" htmlFor="job-wage">Daily Wage (₹)</label>
-              <div className="input-wrapper">
-                <span className="input-icon">💰</span>
-                <input
-                  id="job-wage"
-                  name="dailyWage"
-                  type="number"
-                  className="form-input"
-                  placeholder="e.g. 800"
-                  min={1}
-                  value={form.dailyWage}
-                  onChange={handleChange}
-                  disabled={submitting}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '0' }}>
-              <button
-                id="submit-job-btn"
-                type="submit"
-                className="btn-primary pjf-submit-btn"
-                disabled={submitting}
-              >
-                {submitting
-                  ? <><span className="btn-spinner" />Posting…</>
-                  : '📢 Post Job →'}
-              </button>
-            </div>
-          </div>
-
-          {/* Alert */}
-          {formMsg && (
-            <div className={`alert ${formMsg.type === 'error' ? 'alert-error' : 'alert-success'}`}
-                 style={{ marginTop: '1rem', marginBottom: 0 }}>
-              <span>{formMsg.type === 'error' ? '⚠️' : '✅'}</span>
-              {formMsg.text}
-            </div>
-          )}
-        </form>
+        <PostJobForm
+          token={token}
+          onJobCreated={(newJob) => {
+            setMyJobs((prev) => [newJob, ...prev]);
+            navigate(`/employer/jobs/${newJob._id}/suggested`);
+          }}
+        />
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════

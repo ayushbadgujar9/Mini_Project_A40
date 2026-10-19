@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import JobCard from './JobCard';
 import JobMap from './JobMap';
+import SkillCategoryFilter from './SkillCategoryFilter';
 
 const API_BASE_URL = 'http://localhost:5000';
 
@@ -88,6 +89,8 @@ export default function NearbyJobFilter({
   // Search parameters
   const [radius, setRadius] = useState(initialRadius);
   const [skill, setSkill] = useState(initialSkill);
+  const [selectedCategory, setSelectedCategory] = useState('All Jobs');
+  const [selectedSkills, setSelectedSkills] = useState([]);
 
   // Job results state
   const [jobs, setJobs] = useState([]);
@@ -124,15 +127,24 @@ export default function NearbyJobFilter({
     }
   }, [userLocation]);
 
-  // ── Fetch nearby jobs from backend API ──────────────────────────────────────
-  const fetchNearbyJobs = useCallback(async (lat, lon, maxDistance, skillFilter) => {
+  // ── Fetch nearby jobs from backend API with category and skill filters ──────
+  const fetchNearbyJobs = useCallback(async (lat, lon, maxDistance, skillFilter, categoryFilter, skillsFilter) => {
     if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return;
     setLoading(true);
     setError(null);
 
     try {
       let url = `${API_BASE_URL}/api/jobs/nearby?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&maxDistanceInKm=${encodeURIComponent(maxDistance)}`;
-      if (skillFilter && skillFilter !== 'all') {
+      
+      const cat = categoryFilter !== undefined ? categoryFilter : selectedCategory;
+      if (cat && cat !== 'All Jobs' && cat !== 'all') {
+        url += `&category=${encodeURIComponent(cat)}`;
+      }
+
+      const sks = skillsFilter !== undefined ? skillsFilter : selectedSkills;
+      if (Array.isArray(sks) && sks.length > 0) {
+        url += `&skills=${encodeURIComponent(sks.join(','))}`;
+      } else if (skillFilter && skillFilter !== 'all') {
         url += `&skill=${encodeURIComponent(skillFilter)}`;
       }
 
@@ -166,14 +178,14 @@ export default function NearbyJobFilter({
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, selectedCategory, selectedSkills]);
 
-  // Initial load on mount or coordinate/radius/skill change
+  // Initial load on mount or coordinate/radius/skill/category change
   useEffect(() => {
     if (coords?.latitude && coords?.longitude) {
-      fetchNearbyJobs(coords.latitude, coords.longitude, radius, skill);
+      fetchNearbyJobs(coords.latitude, coords.longitude, radius, skill, selectedCategory, selectedSkills);
     }
-  }, [coords.latitude, coords.longitude, radius, skill, fetchNearbyJobs]);
+  }, [coords.latitude, coords.longitude, radius, skill, selectedCategory, selectedSkills, fetchNearbyJobs]);
 
   // ── OpenStreetMap Nominatim Geocoding Handler ──────────────────────────────
   const handleCitySearch = async (overrideQuery = null) => {
@@ -569,6 +581,18 @@ export default function NearbyJobFilter({
         </div>
       </div>
 
+      {/* ── Trade Skill & Category Filter System ────────────────────────── */}
+      <SkillCategoryFilter
+        selectedCategory={selectedCategory}
+        selectedSkills={selectedSkills}
+        activeJobCount={jobs.length}
+        onFilterChange={({ category, skills: nextSkills }) => {
+          setSelectedCategory(category);
+          setSelectedSkills(nextSkills);
+          fetchNearbyJobs(coords.latitude, coords.longitude, radius, skill, category, nextSkills);
+        }}
+      />
+
       {/* ── Results Summary Header ───────────────────────────────────────── */}
       <div className="nearby-results-header">
         <div className="results-count-text">
@@ -602,7 +626,7 @@ export default function NearbyJobFilter({
           <button
             type="button"
             className="btn-refresh-nearby"
-            onClick={() => fetchNearbyJobs(coords.latitude, coords.longitude, radius, skill)}
+            onClick={() => fetchNearbyJobs(coords.latitude, coords.longitude, radius, skill, selectedCategory, selectedSkills)}
             disabled={loading}
           >
             {loading ? '↻ Loading...' : '↻ Refresh'}

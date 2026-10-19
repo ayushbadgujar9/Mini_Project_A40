@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Schema: Passwordless User Model
+// Schema: Passwordless & Password Hybrid User Model
 // ──────────────────────────────────────────────────────────────────────────────
 const userSchema = new mongoose.Schema(
   {
@@ -29,6 +30,13 @@ const userSchema = new mongoose.Schema(
       },
       default: 'worker',
       required: [true, 'Role is required.'],
+    },
+
+    // ── Optional Password Credential ─────────────────────────────────────────
+    password: {
+      type: String,
+      minlength: [6, 'Password must be at least 6 characters.'],
+      select: false, // Never return password in queries by default
     },
 
     // ── Verification Status ──────────────────────────────────────────────────
@@ -80,14 +88,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
       sparse: true,
-      default: null,
     },
 
     adminId: {
       type: String,
       trim: true,
       sparse: true,
-      default: null,
     },
 
     rejectionReason: {
@@ -157,14 +163,32 @@ const userSchema = new mongoose.Schema(
 );
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Pre-save cross-field validation:
-// Workers / employers cannot have an adminId
+// Pre-save hook: Hash password & validate adminId
 // ──────────────────────────────────────────────────────────────────────────────
-userSchema.pre('save', function (next) {
+userSchema.pre('save', async function (next) {
   if (['worker', 'employer'].includes(this.role) && this.adminId) {
     return next(new Error('Workers and employers cannot have an adminId.'));
   }
-  next();
+
+  // Only hash when password field is new or modified
+  if (!this.isModified('password') || !this.password) return next();
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Instance method: Compare password
+// ──────────────────────────────────────────────────────────────────────────────
+userSchema.methods.comparePassword = async function (candidatePassword) {
+  if (!this.password) return false;
+  return bcrypt.compare(candidatePassword, this.password);
+};
+
 module.exports = mongoose.model('User', userSchema);
+

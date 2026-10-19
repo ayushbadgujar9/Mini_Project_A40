@@ -1,9 +1,25 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { isEmployer, verifyToken, isWorker } = require('../middleware/auth');
 const Job  = require('../models/Job');
 const User = require('../models/User');
 
 const router = express.Router();
+
+const SKILL_IDS = [
+  'construction',
+  'carpentry',
+  'plumbing',
+  'electrical',
+  'cleaning',
+  'driving',
+  'painting',
+  'welding',
+  'masonry',
+  'gardening',
+  'security',
+  'cooking',
+];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fairness Scoring Algorithm
@@ -71,10 +87,75 @@ function calculateDistanceInKm(lat1, lon1, lat2, lon2) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Regex & Query Parameter Helpers for Category & Skills Filtering
+// ─────────────────────────────────────────────────────────────────────────────
+function escapeRegex(text) {
+  return String(text).replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
+
+/**
+ * Parses optional query parameters: `category` and `skills` (or `skill`).
+ * Supports comma-separated strings or arrays.
+ * Uses MongoDB's $in operator with case-insensitive regex ($options: 'i')
+ * to filter against `category` and `skillsRequired` array fields in the Job schema.
+ */
+function buildCategoryAndSkillsQuery(reqQuery) {
+  const conditions = [];
+
+  // Parse category (comma-separated string or array)
+  let categories = [];
+  if (Array.isArray(reqQuery.category)) {
+    categories = reqQuery.category.flatMap((c) => String(c).split(','));
+  } else if (typeof reqQuery.category === 'string') {
+    categories = reqQuery.category.split(',');
+  }
+  categories = categories
+    .map((c) => c.trim())
+    .filter((c) => c && c.toLowerCase() !== 'all' && c.toLowerCase() !== 'all jobs');
+
+  if (categories.length > 0) {
+    const categoryRegexes = categories.map((cat) => new RegExp(escapeRegex(cat), 'i'));
+    conditions.push({
+      $or: [
+        { category: { $in: categoryRegexes } },
+        { requiredSkill: { $in: categoryRegexes } },
+      ],
+    });
+  }
+
+  // Parse skills (comma-separated string or array; also support reqQuery.skill)
+  let skills = [];
+  const rawSkills = reqQuery.skills ?? reqQuery.skill;
+  if (Array.isArray(rawSkills)) {
+    skills = rawSkills.flatMap((s) => String(s).split(','));
+  } else if (typeof rawSkills === 'string') {
+    skills = rawSkills.split(',');
+  }
+  skills = skills
+    .map((s) => s.trim())
+    .filter((s) => s && s.toLowerCase() !== 'all');
+
+  if (skills.length > 0) {
+    const skillRegexes = skills.map((sk) => new RegExp(escapeRegex(sk), 'i'));
+    conditions.push({
+      $or: [
+        { skillsRequired: { $in: skillRegexes } },
+        { requiredSkill: { $in: skillRegexes } },
+      ],
+    });
+  }
+
+  return conditions;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/jobs/nearby
 // Accepts latitude, longitude, and maxDistanceInKm as query parameters.
+// Also supports category and skills query parameters for trade skill filtering.
 // Uses MongoDB's $near operator on the GeoJSON Point location field
 // using the 2dsphere index to return active jobs within the specified radius.
+// Uses MongoDB's $in operator with case-insensitive regex ($options: 'i')
+// to filter jobs against category and skillsRequired array fields in the Job schema.
 // Calculates and appends the distance in kilometers to each returned job object.
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/nearby', async (req, res) => {
@@ -128,8 +209,10 @@ router.get('/nearby', async (req, res) => {
       },
     };
 
-    if (req.query.skill && req.query.skill !== 'all') {
-      query.requiredSkill = req.query.skill;
+    // Filter against category and skillsRequired array fields using $in operator with regex
+    const filterConditions = buildCategoryAndSkillsQuery(req.query);
+    if (filterConditions.length > 0) {
+      query.$and = filterConditions;
     }
 
     const jobs = await Job.find(query)
@@ -172,43 +255,91 @@ router.get('/nearby', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/jobs
 // Employer posts a new job listing.
+// Automatically constructs GeoJSON Point location field [lng, lat] from
+// forward-geocoded coordinates (latitude, longitude) or location object.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/', isEmployer, async (req, res) => {
   try {
-    const { title, description, requiredSkill, dailyWage, city, location, latitude, longitude } = req.body;
-
-    if (!title || !description || !requiredSkill || dailyWage == null) {
-      return res.status(400).json({
-        message: 'title, description, requiredSkill, and dailyWage are all required.',
-      });
-    }
-
-    let jobLocation = { type: 'Point', coordinates: [74.24, 16.70] };
-    if (location && Array.isArray(location.coordinates) && location.coordinates.length === 2) {
-      jobLocation = {
-        type: 'Point',
-        coordinates: [Number(location.coordinates[0]), Number(location.coordinates[1])],
-      };
-    } else if (latitude != null && longitude != null && !isNaN(Number(latitude)) && !isNaN(Number(longitude))) {
-      jobLocation = {
-        type: 'Point',
-        coordinates: [Number(longitude), Number(latitude)],
-      };
-    }
-
-    const job = await Job.create({
-      title:         title.trim(),
-      description:   description.trim(),
+    const {
+      title,
+      description,
+      skill,
       requiredSkill,
-      dailyWage:     Number(dailyWage),
-      employerId:    req.user.id,
+      category,
+      skillsRequired,
+      dailyWage,
+      wage,
+      city,
+      location,
+      latitude,
+      longitude,
+    } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ message: 'Job title is required.' });
+    }
+
+    const wageValue = dailyWage ?? wage;
+    if (wageValue == null || isNaN(Number(wageValue)) || Number(wageValue) < 1) {
+      return res.status(400).json({ message: 'A valid daily wage (minimum ₹1) is required.' });
+    }
+
+    const rawSkill = skill || requiredSkill || (Array.isArray(skillsRequired) && skillsRequired[0]) || 'Construction';
+    const skillVal = String(rawSkill).trim();
+    const normalizedSkill = skillVal.toLowerCase();
+
+    // Determine skillsRequired array
+    let finalSkillsRequired = [];
+    if (Array.isArray(skillsRequired) && skillsRequired.length > 0) {
+      finalSkillsRequired = skillsRequired.map((s) => String(s).trim());
+    } else if (typeof skillsRequired === 'string' && skillsRequired.trim()) {
+      finalSkillsRequired = skillsRequired.split(',').map((s) => s.trim());
+    } else {
+      finalSkillsRequired = [skillVal];
+    }
+
+    // Construct GeoJSON Point field: coordinates must be [longitude, latitude]
+    let jobLocation = { type: 'Point', coordinates: [74.2433, 16.7049] }; // Fallback Kolhapur coordinates
+    if (
+      longitude != null &&
+      latitude != null &&
+      !isNaN(parseFloat(longitude)) &&
+      !isNaN(parseFloat(latitude))
+    ) {
+      jobLocation = {
+        type: 'Point',
+        coordinates: [parseFloat(longitude), parseFloat(latitude)], // [lng, lat]
+      };
+    } else if (
+      location &&
+      Array.isArray(location.coordinates) &&
+      location.coordinates.length === 2 &&
+      !isNaN(parseFloat(location.coordinates[0])) &&
+      !isNaN(parseFloat(location.coordinates[1]))
+    ) {
+      jobLocation = {
+        type: 'Point',
+        coordinates: [parseFloat(location.coordinates[0]), parseFloat(location.coordinates[1])],
+      };
+    }
+
+    const jobPayload = {
+      title:         title.trim(),
+      description:   description && description.trim() ? description.trim() : `${title.trim()} in ${city ? city.trim() : 'local area'}`,
+      skillsRequired: finalSkillsRequired,
+      requiredSkill: SKILL_IDS.includes(normalizedSkill) ? normalizedSkill : 'construction',
+      category:      category ? category.trim() : undefined,
       city:          city ? city.trim() : null,
+      wage:          Number(wageValue),
+      dailyWage:     Number(wageValue),
+      employerId:    req.user.id,
       location:      jobLocation,
-    });
+    };
 
-    await job.populate('employerId', 'name');
+    const newJob = await Job.create(jobPayload);
+    await newJob.populate('employerId', 'name phoneNumber');
 
-    return res.status(201).json({ message: 'Job posted successfully.', job });
+    return res.status(201).json({ message: 'Job posted successfully.', job: newJob });
   } catch (err) {
     if (err.name === 'ValidationError') {
       const messages = Object.values(err.errors).map((e) => e.message);
@@ -221,25 +352,52 @@ router.post('/', isEmployer, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/jobs
 // Returns all open jobs (newest first) with employer name populated.
-// Any authenticated user can call this.
-// Optional query param: ?mine=true  → only the calling employer's jobs
+// Supports optional query parameters:
+//   - category: string or comma-separated string or array
+//   - skills: string or comma-separated string or array (or skill)
+//   - mine=true (requires Bearer token, returns only calling employer's jobs)
+// Uses MongoDB's $in operator with case-insensitive regex ($options: 'i')
+// to filter jobs against category and skillsRequired array fields in the Job schema.
 // ─────────────────────────────────────────────────────────────────────────────
-router.get('/', verifyToken, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const filter = { status: 'open' };
+    let authUser = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        authUser = decoded;
+      } catch (_) {
+        // Proceed unauthenticated unless mine=true
+      }
+    }
+
+    const filter = { status: 'open', isFlagged: { $ne: true } };
 
     if (req.query.mine === 'true') {
-      filter.employerId = req.user.id;
+      if (!authUser?.id) {
+        return res.status(401).json({ message: 'Authentication required to view your jobs.' });
+      }
+      filter.employerId = authUser.id;
       delete filter.status;
+      delete filter.isFlagged;
+    }
+
+    // Filter against category and skillsRequired array fields using $in operator with regex
+    const filterConditions = buildCategoryAndSkillsQuery(req.query);
+    if (filterConditions.length > 0) {
+      filter.$and = filterConditions;
     }
 
     const jobs = await Job.find(filter)
       .sort({ createdAt: -1 })
-      .populate('employerId', 'name')
+      .populate('employerId', 'name phoneNumber')
       .lean();
 
-    return res.status(200).json({ jobs });
+    return res.status(200).json({ jobs, count: jobs.length });
   } catch (err) {
+    console.error('Error fetching jobs:', err);
     return res.status(500).json({ message: 'Failed to fetch jobs.', error: err.message });
   }
 });

@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import JobCard from '../../components/JobCard';
-import NearbyJobFilter from '../../components/NearbyJobFilter';
 import JobMap from '../../components/JobMap';
 import WorkerFeed from '../../components/WorkerFeed';
+import SkillCategoryFilter from '../../components/SkillCategoryFilter';
 
 const API = 'http://localhost:5000';
 
@@ -36,6 +36,8 @@ export default function WorkerDashboard() {
   const [jobs,        setJobs]        = useState([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [skillFilter, setSkillFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('All Jobs');
+  const [selectedTradeSkills, setSelectedTradeSkills] = useState([]);
 
   // ── My applications ────────────────────────────────────────────────────────
   const [applications,    setApplications]    = useState([]);
@@ -110,9 +112,34 @@ export default function WorkerDashboard() {
   const profileIncomplete = !profileLoading && (!profile?.skills || profile.skills.length === 0);
 
   // ── Filtered jobs ──────────────────────────────────────────────────────────
-  const filteredJobs = skillFilter === 'all'
-    ? jobs
-    : jobs.filter((j) => j.requiredSkill === skillFilter);
+  const filteredJobs = jobs.filter((job) => {
+    // 1. Trade Category filter
+    if (categoryFilter && categoryFilter !== 'All Jobs' && categoryFilter !== 'all') {
+      const matchCat = job.category && job.category.toLowerCase().includes(categoryFilter.toLowerCase());
+      const matchSkillFallback = job.requiredSkill && categoryFilter.toLowerCase().includes(job.requiredSkill.toLowerCase());
+      if (!matchCat && !matchSkillFallback) return false;
+    }
+
+    // 2. Specialized sub-skills / tags filter
+    if (selectedTradeSkills && selectedTradeSkills.length > 0) {
+      const jobSkills = Array.isArray(job.skillsRequired)
+        ? job.skillsRequired.map((s) => String(s).toLowerCase())
+        : [];
+      if (job.requiredSkill) jobSkills.push(job.requiredSkill.toLowerCase());
+
+      const hasMatch = selectedTradeSkills.some((ts) =>
+        jobSkills.some((js) => js.includes(ts.toLowerCase()) || ts.toLowerCase().includes(js))
+      );
+      if (!hasMatch) return false;
+    }
+
+    // 3. Legacy skill filter chip
+    if (skillFilter !== 'all' && job.requiredSkill !== skillFilter) {
+      return false;
+    }
+
+    return true;
+  });
 
   // Skills that appear in the feed (for filter chips)
   const feedSkillIds = [...new Set(jobs.map((j) => j.requiredSkill))];
@@ -484,6 +511,19 @@ export default function WorkerDashboard() {
                 {jobsLoading ? '…' : '↻ Refresh'}
               </button>
             </div>
+          </div>
+
+          {/* Trade Skill & Category Filter Component */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <SkillCategoryFilter
+              selectedCategory={categoryFilter}
+              selectedSkills={selectedTradeSkills}
+              activeJobCount={filteredJobs.length}
+              onFilterChange={({ category, skills: nextSkills }) => {
+                setCategoryFilter(category);
+                setSelectedTradeSkills(nextSkills);
+              }}
+            />
           </div>
 
           {/* Interactive Visual Job Map */}

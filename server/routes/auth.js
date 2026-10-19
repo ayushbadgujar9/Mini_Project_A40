@@ -18,12 +18,11 @@ const signToken = (user) =>
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/register
-// Accepts: { name, email, role }
-// Creates a new unverified user and calls generateAndSendOTP()
+// Accepts: { name, email, role, password, phoneNumber }
 // ──────────────────────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, role } = req.body;
+    const { name, email, role, password, phoneNumber } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: 'Name is required.' });
@@ -49,11 +48,13 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Create new unverified user without password
+    // Create new unverified user
     const user = new User({
       name: name.trim(),
       email: normalizedEmail,
       role: assignedRole,
+      password: password && password.trim() ? password.trim() : undefined,
+      phoneNumber: phoneNumber && phoneNumber.trim() ? phoneNumber.trim() : undefined,
       isVerified: false,
       isEmailVerified: false,
       verificationStatus: 'unverified',
@@ -81,15 +82,63 @@ router.post('/register', async (req, res) => {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/login
-// Accepts: { email }
-// Checks if the user exists. If yes, calls generateAndSendOTP()
+// Accepts either:
+//   A) { phoneNumber, password } OR { adminId, password } OR { email, password }
+//   B) { email } (passwordless email OTP)
 // ──────────────────────────────────────────────────────────────────────────────
 router.post(['/login', '/send-login-otp', '/send-otp'], async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, phoneNumber, adminId, password } = req.body;
 
+    // ── Mode A: Password-based Login ─────────────────────────────────────────
+    if (password) {
+      let user;
+
+      if (phoneNumber && phoneNumber.trim()) {
+        user = await User.findOne({ phoneNumber: phoneNumber.trim() }).select('+password');
+        if (!user) {
+          return res.status(401).json({ message: 'Invalid phone number or password.' });
+        }
+      } else if (adminId && adminId.trim()) {
+        user = await User.findOne({ adminId: adminId.trim() }).select('+password');
+        if (!user) {
+          return res.status(401).json({ message: 'Invalid admin ID or password.' });
+        }
+      } else if (email && email.trim()) {
+        const normalizedEmail = email.trim().toLowerCase();
+        user = await User.findOne({ email: normalizedEmail }).select('+password');
+        if (!user) {
+          return res.status(401).json({ message: 'Invalid email or password.' });
+        }
+      } else {
+        return res.status(400).json({ message: 'Please provide phone number, admin ID, or email with your password.' });
+      }
+
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Invalid credentials. Please check your password.' });
+      }
+
+      const token = signToken(user);
+      return res.status(200).json({
+        message: 'Login successful.',
+        token,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          phoneNumber: user.phoneNumber,
+          adminId: user.adminId,
+          isVerified: user.isVerified,
+          isEmailVerified: user.isEmailVerified,
+        },
+      });
+    }
+
+    // ── Mode B: Passwordless Email OTP Login ──────────────────────────────────
     if (!email || !email.trim()) {
-      return res.status(400).json({ message: 'Email address is required.' });
+      return res.status(400).json({ message: 'Email address (or password credentials) is required.' });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -116,8 +165,44 @@ router.post(['/login', '/send-login-otp', '/send-otp'], async (req, res) => {
       exists: true,
     });
   } catch (err) {
-    console.error('Login OTP error:', err);
-    res.status(500).json({ message: 'Server error sending login code.', error: err.message });
+    console.error('Login error:', err);
+    res.status(500).json({ message: 'Server error during login.', error: err.message });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/demo-login
+// Fast 1-click login for demonstration & development
+// Accepts: { role: 'admin' | 'employer' | 'worker' }
+// ──────────────────────────────────────────────────────────────────────────────
+router.post('/demo-login', async (req, res) => {
+  try {
+    const { role } = req.body;
+    const targetRole = ['admin', 'employer', 'worker'].includes(role) ? role : 'worker';
+
+    const user = await User.findOne({ role: targetRole });
+    if (!user) {
+      return res.status(404).json({ message: `No demo account found for role "${targetRole}".` });
+    }
+
+    const token = signToken(user);
+    res.status(200).json({
+      message: `Signed in as demo ${targetRole}.`,
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phoneNumber: user.phoneNumber,
+        adminId: user.adminId,
+        isVerified: user.isVerified,
+        isEmailVerified: user.isEmailVerified,
+      },
+    });
+  } catch (err) {
+    console.error('Demo login error:', err);
+    res.status(500).json({ message: 'Demo login failed.', error: err.message });
   }
 });
 
