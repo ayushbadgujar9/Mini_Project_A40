@@ -88,6 +88,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
       sparse: true,
+      validate: {
+        validator: function (v) {
+          if (!v) return true; // optional field
+          return /^[6-9]\d{9}$/.test(v.replace(/[\s\-+]/g, '').replace(/^91/, ''));
+        },
+        message: 'Phone number must be a valid 10-digit Indian mobile number (starts with 6-9).',
+      },
     },
 
     adminId: {
@@ -121,6 +128,41 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: null,
+    },
+
+    dateOfBirth: {
+      type: Date,
+      default: null,
+      validate: {
+        validator: function (dob) {
+          if (!dob) return true; // optional field
+          const ageDiffMs = Date.now() - new Date(dob).getTime();
+          const age = Math.floor(ageDiffMs / (1000 * 60 * 60 * 24 * 365.25));
+          return age >= 20;
+        },
+        message: 'Worker must be at least 20 years old.',
+      },
+    },
+
+    yearsOfExperience: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 50,
+    },
+
+    expectedDailyWage: {
+      type: Number,
+      default: null,
+      min: [0, 'Expected daily wage cannot be negative.'],
+      max: [10000, 'Expected daily wage cannot exceed ₹10,000/day.'],
+    },
+
+    bio: {
+      type: String,
+      trim: true,
+      default: null,
+      maxlength: [300, 'Bio cannot exceed 300 characters.'],
     },
 
     location: {

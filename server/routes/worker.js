@@ -161,7 +161,7 @@ router.post('/verify', isWorker, upload.single('idImage'), async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 router.put('/profile', isWorker, async (req, res) => {
   try {
-    const { skills, primarySkill, city } = req.body;
+    const { skills, primarySkill, city, phoneNumber, dateOfBirth, yearsOfExperience, expectedDailyWage, bio } = req.body;
 
     if (!Array.isArray(skills) || skills.length === 0) {
       return res.status(400).json({ message: 'skills must be a non-empty array.' });
@@ -173,13 +173,56 @@ router.put('/profile', isWorker, async (req, res) => {
       return res.status(400).json({ message: 'All skills must be non-empty strings.' });
     }
 
+    // ── Field-level validation ───────────────────────────────────────────────
+    if (phoneNumber && phoneNumber.trim()) {
+      const digits = phoneNumber.replace(/[\s\-+]/g, '').replace(/^91/, '');
+      if (!/^[6-9]\d{9}$/.test(digits)) {
+        return res.status(400).json({ message: 'Phone number must be a valid 10-digit Indian mobile number (starts with 6–9).' });
+      }
+    }
+
+    if (dateOfBirth) {
+      const dob = new Date(dateOfBirth);
+      if (isNaN(dob.getTime())) {
+        return res.status(400).json({ message: 'Invalid date of birth.' });
+      }
+      const ageDiffMs = Date.now() - dob.getTime();
+      const age = Math.floor(ageDiffMs / (1000 * 60 * 60 * 24 * 365.25));
+      if (age < 20) {
+        return res.status(400).json({ message: 'Worker must be at least 20 years old.' });
+      }
+    }
+
+    if (expectedDailyWage !== undefined && expectedDailyWage !== null && expectedDailyWage !== '') {
+      const wage = Number(expectedDailyWage);
+      if (isNaN(wage) || wage < 0) {
+        return res.status(400).json({ message: 'Expected daily wage cannot be negative.' });
+      }
+      if (wage > 10000) {
+        return res.status(400).json({ message: 'Expected daily wage cannot exceed ₹10,000/day.' });
+      }
+    }
+
+    if (bio && typeof bio === 'string' && bio.trim().length > 300) {
+      return res.status(400).json({ message: 'Bio cannot exceed 300 characters.' });
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     const update = { skills: skills.map((s) => s.trim()) };
-    if (primarySkill && typeof primarySkill === 'string') {
-      update.primarySkill = primarySkill.trim();
+
+    if (primarySkill && typeof primarySkill === 'string') update.primarySkill = primarySkill.trim();
+    if (city && typeof city === 'string') update.city = city.trim();
+    if (phoneNumber && typeof phoneNumber === 'string') update.phoneNumber = phoneNumber.trim();
+    if (dateOfBirth) update.dateOfBirth = new Date(dateOfBirth);
+    if (yearsOfExperience !== undefined && yearsOfExperience !== null && yearsOfExperience !== '') {
+      const exp = Number(yearsOfExperience);
+      if (!isNaN(exp) && exp >= 0 && exp <= 50) update.yearsOfExperience = exp;
     }
-    if (city && typeof city === 'string') {
-      update.city = city.trim();
+    if (expectedDailyWage !== undefined && expectedDailyWage !== null && expectedDailyWage !== '') {
+      const wage = Number(expectedDailyWage);
+      if (!isNaN(wage) && wage >= 0) update.expectedDailyWage = wage;
     }
+    if (bio && typeof bio === 'string') update.bio = bio.trim().slice(0, 300);
 
     const user = await User.findByIdAndUpdate(req.user.id, update, { new: true });
 
@@ -188,6 +231,11 @@ router.put('/profile', isWorker, async (req, res) => {
       skills: user.skills,
       primarySkill: user.primarySkill,
       city: user.city,
+      phoneNumber: user.phoneNumber,
+      dateOfBirth: user.dateOfBirth,
+      yearsOfExperience: user.yearsOfExperience,
+      expectedDailyWage: user.expectedDailyWage,
+      bio: user.bio,
       isVerified: user.isVerified,
     });
   } catch (err) {
@@ -202,8 +250,16 @@ router.put('/profile', isWorker, async (req, res) => {
 router.get('/profile', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select('name email skills primarySkill isVerified isEmailVerified verificationStatus role city lastWorkedDate totalJobsCompleted');
+      .select('name email skills primarySkill isVerified isEmailVerified verificationStatus role city phoneNumber dateOfBirth yearsOfExperience expectedDailyWage bio lastWorkedDate totalJobsCompleted idImagePath ocrExtractedText');
     if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    // Guard: If worker has never uploaded an ID image or had OCR text extracted,
+    // they should never be marked as ID-verified. Self-heal legacy OTP-marked records.
+    if (!user.idImagePath && !user.ocrExtractedText && (user.isVerified || user.verificationStatus === 'verified')) {
+      user.isVerified = false;
+      user.verificationStatus = 'unverified';
+      await user.save();
+    }
 
     return res.status(200).json({
       name:               user.name,
@@ -215,8 +271,15 @@ router.get('/profile', verifyToken, async (req, res) => {
       isEmailVerified:    user.isEmailVerified,
       verificationStatus: user.verificationStatus,
       city:               user.city,
+      phoneNumber:        user.phoneNumber,
+      dateOfBirth:        user.dateOfBirth,
+      yearsOfExperience:  user.yearsOfExperience,
+      expectedDailyWage:  user.expectedDailyWage,
+      bio:                user.bio,
       lastWorkedDate:     user.lastWorkedDate,
       totalJobsCompleted: user.totalJobsCompleted,
+      idImagePath:        user.idImagePath || null,
+      ocrExtractedText:   user.ocrExtractedText || null,
     });
   } catch (err) {
     return res.status(500).json({ message: 'Failed to fetch profile.', error: err.message });

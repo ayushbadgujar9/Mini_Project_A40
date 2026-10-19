@@ -3,6 +3,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
+const fs = require('fs');
 const User = require('../models/User');
 const Job = require('../models/Job');
 
@@ -12,22 +13,43 @@ async function startCompassServer() {
   console.log('================================================================================\n');
 
   let mongod;
-  let uri;
+  let uri = 'mongodb://127.0.0.1:27017/fairconnect';
+  let isAlreadyRunning = false;
 
+  // 1. Check if MongoDB is already active (e.g., FairConnect backend dev server is running)
   try {
-    mongod = await MongoMemoryServer.create({
-      instance: { port: 27017, dbName: 'fairconnect' },
-    });
-    uri = mongod.getUri();
-  } catch (_e) {
-    console.log('⚠️  Port 27017 is in use or unavailable. Starting on dynamic port...');
-    mongod = await MongoMemoryServer.create({
-      instance: { dbName: 'fairconnect' },
-    });
-    uri = mongod.getUri();
-  }
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 1500 });
+    console.log('⚡ Detected MongoDB is ALREADY running on port 27017 (from your backend server)!');
+    isAlreadyRunning = true;
+  } catch (_connErr) {
+    // 2. Not running, start persistent MongoMemoryServer on port 27017 with .mongodb_data
+    const dbPath = path.join(__dirname, '../.mongodb_data');
+    if (!fs.existsSync(dbPath)) fs.mkdirSync(dbPath, { recursive: true });
 
-  await mongoose.connect(uri);
+    try {
+      mongod = await MongoMemoryServer.create({
+        instance: {
+          port: 27017,
+          dbName: 'fairconnect',
+          dbPath,
+          storageEngine: 'wiredTiger',
+        },
+      });
+      uri = mongod.getUri('fairconnect');
+    } catch (_portErr) {
+      console.log('⚠️  Port 27017 in use, switching to dynamic port...');
+      mongod = await MongoMemoryServer.create({
+        instance: {
+          dbName: 'fairconnect',
+          dbPath,
+          storageEngine: 'wiredTiger',
+        },
+      });
+      uri = mongod.getUri('fairconnect');
+    }
+
+    await mongoose.connect(uri);
+  }
 
   // Seed demo data if empty
   const count = await User.countDocuments();
@@ -194,7 +216,11 @@ async function startCompassServer() {
     ]);
   }
 
+  const userCount = await User.countDocuments();
+  const jobCount = await Job.countDocuments();
+
   console.log('✅  MongoDB Server is READY and listening for Compass!');
+  console.log(`📊  Current Database Status: ${userCount} Users, ${jobCount} Jobs`);
   console.log('--------------------------------------------------------------------------------');
   console.log('🧭  MONGODB COMPASS CONNECTION INSTRUCTIONS:');
   console.log(' 1. Open MongoDB Compass on your computer');
@@ -204,12 +230,14 @@ async function startCompassServer() {
   console.log(' 4. Look for the "fairconnect" database in the left sidebar');
   console.log('    You will see the collections: users, jobs, applications');
   console.log('--------------------------------------------------------------------------------');
-  console.log('Press Ctrl + C anytime in this terminal to shut down the server.\n');
+  console.log('Press Ctrl + C anytime in this terminal to stop this script.\n');
 
   process.on('SIGINT', async () => {
-    console.log('\n🛑 Shutting down MongoDB Compass server...');
+    console.log('\n🛑 Stopping MongoDB Compass listener...');
     await mongoose.disconnect();
-    await mongod.stop();
+    if (mongod) {
+      await mongod.stop();
+    }
     process.exit(0);
   });
 

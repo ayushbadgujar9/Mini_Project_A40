@@ -253,10 +253,12 @@ router.post(['/verify-otp', '/verify-login-otp', '/confirm-email-otp'], async (r
       return res.status(401).json({ message: 'Invalid verification code. Please check and try again.' });
     }
 
-    // Mark user as verified and clear OTP fields
-    user.isVerified = true;
+    // Mark email as verified and clear OTP fields
     user.isEmailVerified = true;
-    user.verificationStatus = 'verified';
+    if (user.role !== 'worker') {
+      user.isVerified = true;
+      user.verificationStatus = 'verified';
+    }
     user.currentOtp = null;
     user.otpExpiresAt = null;
     user.emailOtp = null;

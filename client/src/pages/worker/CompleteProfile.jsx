@@ -23,6 +23,13 @@ export default function CompleteProfile() {
   const [skillsSaving,   setSkillsSaving]   = useState(false);
   const [skillsMsg,      setSkillsMsg]       = useState(null); // { type, text }
 
+  // ── New profile fields ─────────────────────────────────────────────────────
+  const [phoneNumber,       setPhoneNumber]       = useState('');
+  const [dateOfBirth,       setDateOfBirth]       = useState('');
+  const [yearsOfExperience, setYearsOfExperience] = useState('');
+  const [expectedDailyWage, setExpectedDailyWage] = useState('');
+  const [bio,               setBio]               = useState('');
+
   // ── ID upload & OCR state ──────────────────────────────────────────────────
   const [idFile,        setIdFile]        = useState(null);
   const [idPreviewUrl,  setIdPreviewUrl]  = useState(null);
@@ -47,21 +54,27 @@ export default function CompleteProfile() {
           setSelectedSkills(data.skills);
           setSkillsDone(true);
         }
-        if (data.city) {
-          setCity(data.city);
-        }
-        if (data.isVerified || data.verificationStatus === 'verified') {
+        if (data.city) setCity(data.city);
+        if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
+        if (data.dateOfBirth) setDateOfBirth(data.dateOfBirth.slice(0, 10)); // 'YYYY-MM-DD'
+        if (data.yearsOfExperience !== null && data.yearsOfExperience !== undefined) setYearsOfExperience(String(data.yearsOfExperience));
+        if (data.expectedDailyWage !== null && data.expectedDailyWage !== undefined) setExpectedDailyWage(String(data.expectedDailyWage));
+        if (data.bio) setBio(data.bio);
+        const hasUploadedDoc = Boolean(data.idImagePath || data.ocrExtractedText);
+        if ((data.isVerified || data.verificationStatus === 'verified') && hasUploadedDoc) {
           setVerifyDone(true);
           setVerifyResult({
             verified: true,
             status: 'verified',
             message: 'Your profile is already ID verified!',
+            ocrText: data.ocrExtractedText || null,
           });
-        } else if (data.verificationStatus === 'pending') {
+        } else if (data.verificationStatus === 'pending' && hasUploadedDoc) {
           setVerifyResult({
             verified: false,
             status: 'pending',
             message: 'Your ID is currently under manual review by the admin team.',
+            ocrText: data.ocrExtractedText || null,
           });
         }
       })
@@ -82,12 +95,49 @@ export default function CompleteProfile() {
     );
   };
 
-  // ── Save skills & city ─────────────────────────────────────────────────────
+  // ── Save skills, city & profile fields ────────────────────────────────────
   const handleSaveSkills = async () => {
     if (selectedSkills.length === 0) {
       setSkillsMsg({ type: 'error', text: 'Please select at least one skill.' });
       return;
     }
+
+    // ── Client-side field validation ─────────────────────────────────────────
+    if (phoneNumber.trim()) {
+      const digits = phoneNumber.replace(/[\s\-+]/g, '').replace(/^91/, '');
+      if (!/^[6-9]\d{9}$/.test(digits)) {
+        setSkillsMsg({ type: 'error', text: '📞 Phone number must be a valid 10-digit Indian number (starts with 6–9).' });
+        return;
+      }
+    }
+
+    if (dateOfBirth) {
+      const ageDiffMs = Date.now() - new Date(dateOfBirth).getTime();
+      const age = Math.floor(ageDiffMs / (1000 * 60 * 60 * 24 * 365.25));
+      if (age < 20) {
+        setSkillsMsg({ type: 'error', text: '🎂 You must be at least 20 years old to register as a worker.' });
+        return;
+      }
+    }
+
+    if (expectedDailyWage !== '') {
+      const wage = Number(expectedDailyWage);
+      if (isNaN(wage) || wage < 0) {
+        setSkillsMsg({ type: 'error', text: '₹ Expected daily wage cannot be negative.' });
+        return;
+      }
+      if (wage > 10000) {
+        setSkillsMsg({ type: 'error', text: '₹ Expected daily wage cannot exceed ₹10,000/day.' });
+        return;
+      }
+    }
+
+    if (bio.trim().length > 300) {
+      setSkillsMsg({ type: 'error', text: '📝 Bio cannot exceed 300 characters.' });
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     setSkillsSaving(true);
     setSkillsMsg(null);
     try {
@@ -95,9 +145,12 @@ export default function CompleteProfile() {
         skills: selectedSkills,
         primarySkill: selectedSkills[0],
       };
-      if (city.trim()) {
-        payload.city = city.trim();
-      }
+      if (city.trim())             payload.city               = city.trim();
+      if (phoneNumber.trim())       payload.phoneNumber         = phoneNumber.trim();
+      if (dateOfBirth)              payload.dateOfBirth         = dateOfBirth;
+      if (yearsOfExperience !== '') payload.yearsOfExperience   = Number(yearsOfExperience);
+      if (expectedDailyWage !== '') payload.expectedDailyWage   = Number(expectedDailyWage);
+      if (bio.trim())               payload.bio                 = bio.trim();
 
       const res = await fetch(`${API}/api/worker/profile`, {
         method: 'PUT',
@@ -110,7 +163,7 @@ export default function CompleteProfile() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
 
-      setSkillsMsg({ type: 'success', text: '✅ Skills and location saved successfully!' });
+      setSkillsMsg({ type: 'success', text: '✅ Profile saved successfully!' });
       setSkillsDone(true);
 
       // Redirect after both actions are complete
@@ -313,6 +366,97 @@ export default function CompleteProfile() {
                 fontSize: '0.85rem',
               }}
             />
+          </div>
+
+          {/* ─── NEW PROFILE FIELDS ─── */}
+          <div style={{ background: 'var(--clr-bg-mid)', border: '1px solid var(--clr-border)', borderRadius: '14px', padding: '1.1rem 1.25rem', marginBottom: '1.25rem', display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+
+            {/* Phone Number */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.35rem', color: 'var(--clr-text-heading)' }}>
+                📞 Phone Number
+              </label>
+              <input
+                id="worker-phone-input"
+                type="tel"
+                placeholder="e.g. +91 98220 12345"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--clr-border)', background: '#fff', fontSize: '0.87rem' }}
+              />
+            </div>
+
+            {/* Date of Birth */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.35rem', color: 'var(--clr-text-heading)' }}>
+                🎂 Date of Birth
+              </label>
+              <input
+                id="worker-dob-input"
+                type="date"
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+                max={new Date(new Date().setFullYear(new Date().getFullYear() - 20)).toISOString().slice(0, 10)}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--clr-border)', background: '#fff', fontSize: '0.87rem' }}
+              />
+            </div>
+
+            {/* Years of Experience */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.35rem', color: 'var(--clr-text-heading)' }}>
+                📅 Years of Experience
+              </label>
+              <select
+                id="worker-experience-select"
+                value={yearsOfExperience}
+                onChange={(e) => setYearsOfExperience(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--clr-border)', background: '#fff', fontSize: '0.87rem' }}
+              >
+                <option value="">Select experience</option>
+                <option value="0">Less than 1 year</option>
+                <option value="1">1–2 years</option>
+                <option value="3">3–5 years</option>
+                <option value="6">6–10 years</option>
+                <option value="11">10+ years</option>
+              </select>
+            </div>
+
+            {/* Expected Daily Wage */}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.35rem', color: 'var(--clr-text-heading)' }}>
+                ₹ Expected Daily Wage (₹)
+              </label>
+              <input
+                id="worker-wage-input"
+                type="number"
+                min="0"
+                max="10000"
+                step="50"
+                placeholder="e.g. 750"
+                value={expectedDailyWage}
+                onChange={(e) => setExpectedDailyWage(e.target.value)}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--clr-border)', background: '#fff', fontSize: '0.87rem' }}
+              />
+            </div>
+          </div>
+
+          {/* Short Bio */}
+          <div style={{ marginBottom: '1.25rem' }}>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.35rem', color: 'var(--clr-text-heading)' }}>
+              📝 Short Bio <span style={{ fontWeight: 400, color: '#64748b' }}>(max 300 chars)</span>
+            </label>
+            <textarea
+              id="worker-bio-input"
+              rows={3}
+              maxLength={300}
+              placeholder="Tell employers a little about yourself, your work style, and what you specialise in..."
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              style={{ width: '100%', padding: '0.6rem 0.85rem', borderRadius: '10px', border: '1px solid var(--clr-border)', background: '#fff', fontSize: '0.87rem', resize: 'vertical', lineHeight: 1.5 }}
+            />
+            <div style={{ fontSize: '0.75rem', color: bio.length > 270 ? '#e11d48' : '#94a3b8', textAlign: 'right', marginTop: '0.2rem' }}>
+              {bio.length} / 300
+            </div>
           </div>
 
           {skillsMsg && (

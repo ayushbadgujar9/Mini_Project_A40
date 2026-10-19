@@ -132,18 +132,20 @@ router.post('/confirm-email-otp', verifyToken, async (req, res) => {
       return res.status(401).json({ message: 'Invalid OTP. Please check and try again.' });
     }
 
-    // ✅ OTP is valid — mark email and profile as verified, clear OTP fields
+    // ✅ OTP is valid — mark email as verified, clear OTP fields
     user.isEmailVerified = true;
-    user.isVerified = true;
-    user.verificationStatus = 'verified';
+    if (user.role !== 'worker') {
+      user.isVerified = true;
+      user.verificationStatus = 'verified';
+    }
     user.emailOtp = null;
     user.emailOtpExpiresAt = null;
     await user.save();
 
     res.status(200).json({
-      message: 'Email verified successfully! Your account is now verified.',
+      message: 'Email verified successfully!',
       isEmailVerified: true,
-      isVerified: true,
+      isVerified: user.isVerified,
       verificationStatus: user.verificationStatus,
     });
   } catch (err) {
