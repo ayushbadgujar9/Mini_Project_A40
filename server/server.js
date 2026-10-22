@@ -317,54 +317,21 @@ async function seedInitialUsersIfEmpty() {
 }
 
 async function startServer() {
-  let mongoUri = process.env.MONGO_URI;
-  let connected = false;
+  const mongoUri = process.env.MONGO_URI;
 
-  if (mongoUri) {
-    try {
-      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2000 });
-      console.log('✅  MongoDB connected to', mongoUri);
-      connected = true;
-    } catch (err) {
-      console.warn(`⚠️  Could not connect to external MongoDB at ${mongoUri} (${err.message})`);
-    }
+  if (!mongoUri) {
+    console.error('❌ MONGO_URI is not set in .env file');
+    process.exit(1);
   }
 
-  if (!connected) {
-    console.log('📦 Starting persistent local MongoDB instance for development...');
-    try {
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      const dbPath = path.join(__dirname, '.mongodb_data');
-      if (!fs.existsSync(dbPath)) fs.mkdirSync(dbPath, { recursive: true });
-
-      let mongod;
-      try {
-        mongod = await MongoMemoryServer.create({
-          instance: {
-            port: 27017,
-            dbName: 'fairconnect',
-            dbPath,
-            storageEngine: 'wiredTiger',
-          },
-        });
-      } catch (_portErr) {
-        mongod = await MongoMemoryServer.create({
-          instance: {
-            dbName: 'fairconnect',
-            dbPath,
-            storageEngine: 'wiredTiger',
-          },
-        });
-      }
-      mongoUri = mongod.getUri('fairconnect');
-      await mongoose.connect(mongoUri);
-      console.log('✅  Persistent Local MongoDB connected at', mongoUri);
-      console.log(`🧭  To view in MongoDB Compass, connect to:\n    👉 ${mongoUri}\n`);
-      connected = true;
-    } catch (memErr) {
-      console.error('❌ Failed to start persistent MongoDB:', memErr.message);
-      process.exit(1);
-    }
+  try {
+    console.log('🔗 Connecting to MongoDB Atlas...');
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 15000 });
+    console.log('✅  MongoDB Atlas connected successfully!');
+  } catch (err) {
+    console.error(`❌ Could not connect to MongoDB Atlas: ${err.message}`);
+    console.error('   Check your MONGO_URI, network, and IP whitelist.');
+    process.exit(1);
   }
 
   await seedInitialUsersIfEmpty();
