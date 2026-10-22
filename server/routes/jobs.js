@@ -7,15 +7,18 @@ const User = require('../models/User');
 const router = express.Router();
 
 const SKILL_IDS = [
+  'electrician',
+  'electrical',
+  'plumbing',
+  'plumber',
+  'masonry',
+  'masonary',
   'construction',
   'carpentry',
-  'plumbing',
-  'electrical',
   'cleaning',
   'driving',
   'painting',
   'welding',
-  'masonry',
   'gardening',
   'security',
   'cooking',
@@ -423,6 +426,8 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
     if (job.requiredSkill === 'electrical') skillVariants.push('electrician');
     if (job.requiredSkill === 'masonry') skillVariants.push('masonary');
     if (job.requiredSkill === 'masonary') skillVariants.push('masonry');
+    if (job.requiredSkill === 'plumbing') skillVariants.push('plumber');
+    if (job.requiredSkill === 'plumber') skillVariants.push('plumbing');
 
     const workers = await User.find({
       role:   'worker',
@@ -467,6 +472,7 @@ router.get('/my-scores', isWorker, async (req, res) => {
         if (s === job.requiredSkill) return true;
         if ((s === 'electrician' || s === 'electrical') && (job.requiredSkill === 'electrician' || job.requiredSkill === 'electrical')) return true;
         if ((s === 'masonry' || s === 'masonary') && (job.requiredSkill === 'masonry' || job.requiredSkill === 'masonary')) return true;
+        if ((s === 'plumbing' || s === 'plumber') && (job.requiredSkill === 'plumbing' || job.requiredSkill === 'plumber')) return true;
         return false;
       });
       const fairnessScore = isSkillMatch ? calcFairnessScore(worker, job) : 0;

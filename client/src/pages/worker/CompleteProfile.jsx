@@ -27,7 +27,6 @@ export default function CompleteProfile() {
   const [phoneNumber,       setPhoneNumber]       = useState('');
   const [dateOfBirth,       setDateOfBirth]       = useState('');
   const [yearsOfExperience, setYearsOfExperience] = useState('');
-  const [expectedDailyWage, setExpectedDailyWage] = useState('');
   const [bio,               setBio]               = useState('');
 
   // ── ID upload & OCR state ──────────────────────────────────────────────────
@@ -58,7 +57,6 @@ export default function CompleteProfile() {
         if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
         if (data.dateOfBirth) setDateOfBirth(data.dateOfBirth.slice(0, 10)); // 'YYYY-MM-DD'
         if (data.yearsOfExperience !== null && data.yearsOfExperience !== undefined) setYearsOfExperience(String(data.yearsOfExperience));
-        if (data.expectedDailyWage !== null && data.expectedDailyWage !== undefined) setExpectedDailyWage(String(data.expectedDailyWage));
         if (data.bio) setBio(data.bio);
         const hasUploadedDoc = Boolean(data.idImagePath || data.ocrExtractedText);
         if ((data.isVerified || data.verificationStatus === 'verified') && hasUploadedDoc) {
@@ -120,17 +118,7 @@ export default function CompleteProfile() {
       }
     }
 
-    if (expectedDailyWage !== '') {
-      const wage = Number(expectedDailyWage);
-      if (isNaN(wage) || wage < 0) {
-        setSkillsMsg({ type: 'error', text: '₹ Expected daily wage cannot be negative.' });
-        return;
-      }
-      if (wage > 10000) {
-        setSkillsMsg({ type: 'error', text: '₹ Expected daily wage cannot exceed ₹10,000/day.' });
-        return;
-      }
-    }
+
 
     if (bio.trim().length > 300) {
       setSkillsMsg({ type: 'error', text: '📝 Bio cannot exceed 300 characters.' });
@@ -149,7 +137,6 @@ export default function CompleteProfile() {
       if (phoneNumber.trim())       payload.phoneNumber         = phoneNumber.trim();
       if (dateOfBirth)              payload.dateOfBirth         = dateOfBirth;
       if (yearsOfExperience !== '') payload.yearsOfExperience   = Number(yearsOfExperience);
-      if (expectedDailyWage !== '') payload.expectedDailyWage   = Number(expectedDailyWage);
       if (bio.trim())               payload.bio                 = bio.trim();
 
       const res = await fetch(`${API}/api/worker/profile`, {
@@ -421,23 +408,7 @@ export default function CompleteProfile() {
               </select>
             </div>
 
-            {/* Expected Daily Wage */}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, marginBottom: '0.35rem', color: 'var(--clr-text-heading)' }}>
-                ₹ Expected Daily Wage (₹)
-              </label>
-              <input
-                id="worker-wage-input"
-                type="number"
-                min="0"
-                max="10000"
-                step="50"
-                placeholder="e.g. 750"
-                value={expectedDailyWage}
-                onChange={(e) => setExpectedDailyWage(e.target.value)}
-                style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--clr-border)', background: '#fff', fontSize: '0.87rem' }}
-              />
-            </div>
+
           </div>
 
           {/* Short Bio */}

@@ -66,7 +66,15 @@ export default function SuggestedWorkers() {
     }
   };
 
-  const skill = data?.job ? SKILLS.find((s) => s.id === data.job.requiredSkill) : null;
+  const skill = data?.job
+    ? SKILLS.find(
+        (s) =>
+          s.id === data.job.requiredSkill ||
+          (data.job.requiredSkill === 'plumber' && s.id === 'plumbing') ||
+          (data.job.requiredSkill === 'electrical' && s.id === 'electrician') ||
+          (data.job.requiredSkill === 'masonary' && s.id === 'masonry')
+      )
+    : null;
   const isJobClosed = data?.job?.status === 'closed';
 
   return (

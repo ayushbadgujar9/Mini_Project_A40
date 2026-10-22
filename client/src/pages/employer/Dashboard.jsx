@@ -150,7 +150,13 @@ function StatCard({ icon, label, value, color }) {
 // ── EmployerJobRow ───────────────────────────────────────────────────────────────────────────────
 function EmployerJobRow({ job }) {
   const navigate = useNavigate();
-  const skill = SKILLS.find((s) => s.id === job.requiredSkill);
+  const skill = SKILLS.find(
+    (s) =>
+      s.id === job.requiredSkill ||
+      (job.requiredSkill === 'plumber' && s.id === 'plumbing') ||
+      (job.requiredSkill === 'electrical' && s.id === 'electrician') ||
+      (job.requiredSkill === 'masonary' && s.id === 'masonry')
+  );
   return (
     <div className="employer-job-row">
       <div className="ejr-left">

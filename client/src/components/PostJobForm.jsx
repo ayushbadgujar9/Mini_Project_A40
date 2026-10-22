@@ -6,18 +6,9 @@ const API_BASE_URL = 'http://localhost:5000';
 
 // ── Skills catalogue matching FairConnect standard trades ────────────────────
 export const SKILL_OPTIONS = [
-  { id: 'construction', label: 'Construction', icon: '🏗️' },
-  { id: 'carpentry',    label: 'Carpentry',    icon: '🪚' },
-  { id: 'plumbing',     label: 'Plumbing',     icon: '🔧' },
-  { id: 'electrical',   label: 'Electrical',   icon: '⚡' },
-  { id: 'cleaning',     label: 'Cleaning',     icon: '🧹' },
-  { id: 'driving',      label: 'Driving',      icon: '🚗' },
-  { id: 'painting',     label: 'Painting',     icon: '🎨' },
-  { id: 'welding',      label: 'Welding',      icon: '🔥' },
-  { id: 'masonry',      label: 'Masonry',      icon: '🧱' },
-  { id: 'gardening',    label: 'Gardening',    icon: '🌱' },
-  { id: 'security',     label: 'Security',     icon: '🛡️' },
-  { id: 'cooking',      label: 'Cooking',      icon: '👨‍🍳' },
+  { id: 'electrician', label: 'Electrician', icon: '⚡' },
+  { id: 'plumbing',    label: 'Plumber',     icon: '🔧' },
+  { id: 'masonry',     label: 'Masonry',     icon: '🧱' },
 ];
 
 // Fallback regional coordinates for common Maharashtra cities
@@ -293,10 +284,17 @@ export default function PostJobForm({ token: propToken, onJobCreated, onSuccess 
       }
 
       // 2. Format Structured Backend Payload
+      const selectedSkill = SKILL_OPTIONS.find(
+        (s) => s.label === skill || s.id === skill
+      );
+      const skillName = selectedSkill ? selectedSkill.label : skill;
+      const skillId = selectedSkill ? selectedSkill.id : skill.toLowerCase();
+
       const payload = {
         title: title.trim(),
-        skill: skill,
-        requiredSkill: skill.toLowerCase(),
+        skill: skillName,
+        requiredSkill: skillId,
+        skillsRequired: [skillId, skillName.toLowerCase()],
         city: effectiveCity,
         dailyWage: Number(dailyWage),
         wage: Number(dailyWage),
