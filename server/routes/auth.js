@@ -6,6 +6,15 @@ const { generateAndSendOTP } = require('../utils/otpService');
 
 const router = express.Router();
 
+const ADMIN_EMAILS = [
+  'akulkarni.1011@gmail.com',
+  'ayushbadgujar9@gmail.com',
+  'admin@fairconnect.com',
+  'aakulkarni.1011@gmail.com',
+];
+
+const isAdminEmail = (email) => ADMIN_EMAILS.includes((email || '').trim().toLowerCase());
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Helper: Sign a JWT for a user
 // ──────────────────────────────────────────────────────────────────────────────
@@ -36,28 +45,41 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Please provide a valid email address.' });
     }
 
-    // Role validation (worker or employer)
-    const assignedRole = ['worker', 'employer'].includes(role) ? role : 'worker';
+    // Role validation: if email is a designated admin email, automatically grant admin
+    let assignedRole = ['worker', 'employer'].includes(role) ? role : 'worker';
+    if (isAdminEmail(normalizedEmail)) {
+      assignedRole = 'admin';
+    }
 
     // Check if user already exists
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
+      if (isAdminEmail(normalizedEmail) && existingUser.role !== 'admin') {
+        existingUser.role = 'admin';
+        existingUser.isVerified = true;
+        existingUser.verificationStatus = 'verified';
+        if (!existingUser.adminId) {
+          existingUser.adminId = normalizedEmail.startsWith('ayush') ? 'ADMIN003' : 'ADMIN001';
+        }
+        await existingUser.save();
+      }
       return res.status(409).json({
         message: 'An account with this email address already exists. Please sign in.',
         exists: true,
       });
     }
 
-    // Create new unverified user
+    // Create new user (automatically verified if admin)
     const user = new User({
       name: name.trim(),
       email: normalizedEmail,
       role: assignedRole,
       password: password && password.trim() ? password.trim() : undefined,
       phoneNumber: phoneNumber && phoneNumber.trim() ? phoneNumber.trim() : undefined,
-      isVerified: false,
+      adminId: assignedRole === 'admin' ? (normalizedEmail.startsWith('ayush') ? 'ADMIN003' : 'ADMIN001') : undefined,
+      isVerified: assignedRole === 'admin',
       isEmailVerified: false,
-      verificationStatus: 'unverified',
+      verificationStatus: assignedRole === 'admin' ? 'verified' : 'unverified',
     });
     await user.save();
 
@@ -146,12 +168,35 @@ router.post(['/login', '/send-login-otp', '/send-otp'], async (req, res) => {
       return res.status(400).json({ message: 'Please provide a valid email address.' });
     }
 
-    const user = await User.findOne({ email: normalizedEmail });
+    let user = await User.findOne({ email: normalizedEmail });
+    if (!user && isAdminEmail(normalizedEmail)) {
+      user = await User.create({
+        name: normalizedEmail.startsWith('ayush') ? 'System Admin (Ayush)' : 'Platform Admin',
+        email: normalizedEmail,
+        role: 'admin',
+        adminId: normalizedEmail.startsWith('ayush') ? 'ADMIN003' : 'ADMIN001',
+        isVerified: true,
+        isEmailVerified: true,
+        verificationStatus: 'verified',
+      });
+    }
+
     if (!user) {
       return res.status(404).json({
         message: 'No account found with this email. Please register below.',
         exists: false,
       });
+    }
+
+    if (isAdminEmail(normalizedEmail) && (user.role !== 'admin' || !user.isVerified)) {
+      user.role = 'admin';
+      user.isVerified = true;
+      user.isEmailVerified = true;
+      user.verificationStatus = 'verified';
+      if (!user.adminId) {
+        user.adminId = normalizedEmail.startsWith('ayush') ? 'ADMIN003' : 'ADMIN001';
+      }
+      await user.save();
     }
 
     // Call generateAndSendOTP
@@ -255,7 +300,14 @@ router.post(['/verify-otp', '/verify-login-otp', '/confirm-email-otp'], async (r
 
     // Mark email as verified and clear OTP fields
     user.isEmailVerified = true;
-    if (user.role !== 'worker') {
+    if (isAdminEmail(normalizedEmail) || user.role === 'admin') {
+      user.role = 'admin';
+      user.isVerified = true;
+      user.verificationStatus = 'verified';
+      if (!user.adminId) {
+        user.adminId = normalizedEmail.startsWith('ayush') ? 'ADMIN003' : 'ADMIN001';
+      }
+    } else if (user.role !== 'worker') {
       user.isVerified = true;
       user.verificationStatus = 'verified';
     }

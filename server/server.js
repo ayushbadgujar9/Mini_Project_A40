@@ -49,23 +49,82 @@ const PORT = process.env.PORT || 5000;
 const User = require('./models/User');
 const Job = require('./models/Job');
 
+const DESIGNATED_ADMINS = [
+  { email: 'akulkarni.1011@gmail.com', name: 'Platform Admin', adminId: 'ADMIN001' },
+  { email: 'ayushbadgujar9@gmail.com', name: 'System Admin (Ayush)', adminId: 'ADMIN003' },
+  { email: 'admin@fairconnect.com', name: 'Platform Admin', adminId: 'ADMIN002' },
+];
+
+async function ensureAdminAccounts() {
+  try {
+    for (const adm of DESIGNATED_ADMINS) {
+      let u = await User.findOne({ email: adm.email.toLowerCase() });
+      if (u) {
+        if (u.role !== 'admin' || !u.isVerified || !u.isEmailVerified) {
+          u.role = 'admin';
+          u.isVerified = true;
+          u.isEmailVerified = true;
+          u.verificationStatus = 'verified';
+          if (!u.adminId) u.adminId = adm.adminId;
+          await u.save();
+        }
+      } else {
+        await User.create({
+          name: adm.name,
+          email: adm.email.toLowerCase(),
+          role: 'admin',
+          adminId: adm.adminId,
+          password: 'admin123',
+          isVerified: true,
+          isEmailVerified: true,
+          verificationStatus: 'verified',
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('⚠️  ensureAdminAccounts notice:', err.message);
+  }
+}
+
 async function seedInitialUsersIfEmpty() {
   try {
     const userCount = await User.countDocuments();
     if (userCount === 0) {
       console.log('🌱 Seeding initial demo users and jobs for development...');
 
-      // 1. Seed Admin
-      const admin = await User.create({
-        name: 'Platform Admin',
-        phoneNumber: '+919000000000',
-        adminId: 'ADMIN001',
-        role: 'admin',
-        verificationStatus: 'verified',
-        isVerified: true,
-        isEmailVerified: true,
-        email: 'akulkarni.1011@gmail.com',
-      });
+      // 1. Seed Admins
+      await User.create([
+        {
+          name: 'Platform Admin',
+          phoneNumber: '+919000000000',
+          adminId: 'ADMIN001',
+          role: 'admin',
+          verificationStatus: 'verified',
+          isVerified: true,
+          isEmailVerified: true,
+          email: 'akulkarni.1011@gmail.com',
+        },
+        {
+          name: 'System Admin (Ayush)',
+          phoneNumber: '+919000000002',
+          adminId: 'ADMIN003',
+          role: 'admin',
+          verificationStatus: 'verified',
+          isVerified: true,
+          isEmailVerified: true,
+          email: 'ayushbadgujar9@gmail.com',
+        },
+        {
+          name: 'Platform Admin',
+          phoneNumber: '+919000000001',
+          adminId: 'ADMIN002',
+          role: 'admin',
+          verificationStatus: 'verified',
+          isVerified: true,
+          isEmailVerified: true,
+          email: 'admin@fairconnect.com',
+        },
+      ]);
 
       // 2. Seed Workers (verified & pending for ID review queue)
       const workers = await User.create([
@@ -309,6 +368,7 @@ async function startServer() {
   }
 
   await seedInitialUsersIfEmpty();
+  await ensureAdminAccounts();
 
   app.listen(PORT, () => {
     console.log(`🚀  FairConnect API running on http://localhost:${PORT}`);

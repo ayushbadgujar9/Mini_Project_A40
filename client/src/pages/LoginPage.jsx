@@ -29,6 +29,15 @@ const ArrowLeftIcon = () => (
 // ──────────────────────────────────────────────────────────────────────────────
 // Pure Email Verification Login & Register Component
 // ──────────────────────────────────────────────────────────────────────────────
+const ADMIN_EMAILS = [
+  'akulkarni.1011@gmail.com',
+  'ayushbadgujar9@gmail.com',
+  'admin@fairconnect.com',
+  'aakulkarni.1011@gmail.com',
+];
+
+const isAdminEmail = (e) => ADMIN_EMAILS.includes((e || '').trim().toLowerCase());
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -49,6 +58,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState('worker'); // 'worker' | 'employer'
+  const isCurrentEmailAdmin = isAdminEmail(email);
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const digitRefs = useRef([]);
 
@@ -92,6 +102,16 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      if (isAdminEmail(trimmedEmail)) {
+        // Direct Admin Login flow - auto provisions or fetches admin without worker/employer registration
+        const { data } = await axios.post('/api/auth/login', {
+          email: trimmedEmail,
+        });
+        setIsNewUserMode(false);
+        transitionToOtpScreen(data, trimmedEmail);
+        return;
+      }
+
       if (isNewUserMode) {
         // Register Flow: if name is not provided, first check if user already has an existing account
         if (!name.trim()) {
@@ -264,8 +284,9 @@ export default function LoginPage() {
       setSuccess('Email verified successfully! Entering FairConnect…');
       login(data.token);
 
+      const targetPath = data.user.role === 'admin' ? '/admin/dashboard' : `/${data.user.role}/dashboard`;
       setTimeout(() => {
-        navigate(`/${data.user.role}/dashboard`, { replace: true });
+        navigate(targetPath, { replace: true });
       }, 500);
     } catch (err) {
       setError(err.response?.data?.message || 'Invalid or expired code. Please try again.');
@@ -489,63 +510,30 @@ export default function LoginPage() {
                     }}
                   />
                 </div>
-              </div>
-
-              {/* Quick account suggestions for rapid testing */}
-              <div style={{ marginBottom: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Quick Fill:</span>
-                <button
-                  type="button"
-                  onClick={() => { setEmail('employer@apexconstructions.com'); setIsNewUserMode(false); }}
-                  style={{
-                    background: '#f1f5f9',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.72rem',
-                    color: '#334155',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                  }}
-                >
-                  🏢 Apex (Employer)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEmail('ramesh.patil@example.com'); setIsNewUserMode(false); }}
-                  style={{
-                    background: '#f1f5f9',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.72rem',
-                    color: '#334155',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                  }}
-                >
-                  👷 Ramesh (Worker)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEmail('admin@fairconnect.com'); setIsNewUserMode(false); }}
-                  style={{
-                    background: '#f1f5f9',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '6px',
-                    padding: '0.2rem 0.5rem',
-                    fontSize: '0.72rem',
-                    color: '#334155',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                  }}
-                >
-                  🛡️ Admin
-                </button>
+                {isCurrentEmailAdmin && (
+                  <div
+                    style={{
+                      marginTop: '0.5rem',
+                      background: '#f0fdf4',
+                      border: '1.5px solid #86efac',
+                      borderRadius: '10px',
+                      padding: '0.55rem 0.85rem',
+                      fontSize: '0.82rem',
+                      color: '#15803d',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>🛡️</span>
+                    <span>Recognized Admin Account — Direct access to the FairConnect Admin Portal.</span>
+                  </div>
+                )}
               </div>
 
               {/* Registration Extra Fields (Name & Role) */}
-              {isNewUserMode && (
+              {isNewUserMode && !isCurrentEmailAdmin && (
                 <div
                   style={{
                     background: '#f8fafc',
@@ -659,7 +647,7 @@ export default function LoginPage() {
                   transition: 'transform 0.15s, box-shadow 0.15s',
                 }}
               >
-                {loading ? 'Sending Code…' : isNewUserMode ? 'Send Verification Code →' : 'Continue with Email OTP →'}
+                {loading ? 'Sending Code…' : isCurrentEmailAdmin ? 'Access Admin Portal →' : isNewUserMode ? 'Send Verification Code →' : 'Continue with Email OTP →'}
               </button>
             </form>
 

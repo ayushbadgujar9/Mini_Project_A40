@@ -66,9 +66,23 @@ async function seedDatabase() {
     });
     await admin2.save();
 
+    const admin3 = new User({
+      name: 'System Admin (Ayush)',
+      email: 'ayushbadgujar9@gmail.com',
+      phoneNumber: '+919000000002',
+      adminId: 'ADMIN003',
+      password: 'admin123',
+      role: 'admin',
+      verificationStatus: 'verified',
+      isVerified: true,
+      isEmailVerified: true,
+    });
+    await admin3.save();
+
     console.log('  ✅ Admins Created:');
     console.log('     Primary Admin   : akulkarni.1011@gmail.com (ADMIN001)');
-    console.log('     Secondary Admin : admin@fairconnect.com (ADMIN002)');
+    console.log('     Secondary Admin : ayushbadgujar9@gmail.com (ADMIN003)');
+    console.log('     Demo Admin      : admin@fairconnect.com (ADMIN002)');
     console.log('     Password        : admin123');
 
     // ── 3. Seed Worker Accounts ──────────────────────────────────────────────
@@ -541,7 +555,7 @@ async function seedDatabase() {
     console.log('\n🎉 Database Seed Completed Successfully!');
     console.log('───────────────────────────────────────────────────');
     console.log('📊 Summary:');
-    console.log('   - Admin Users  : 2 (akulkarni.1011@gmail.com, admin@fairconnect.com)');
+    console.log('   - Admin Users  : 3 (akulkarni.1011@gmail.com, ayushbadgujar9@gmail.com, admin@fairconnect.com)');
     console.log('   - Workers      : 4 (2 Verified, 2 Pending Verification)');
     console.log('   - Employers    : 2 (contact@apexconstructions.com, employer@apexconstructions.com)');
     console.log(`   - Job Listings : ${jobsData.length} (1 Flagged for Moderation)`);
