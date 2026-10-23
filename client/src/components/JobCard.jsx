@@ -32,6 +32,7 @@ export default function JobCard({
   isSkillMatch = false,
   token,
   applicationStatus,
+  workerSkills = [],
 }) {
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(!!applicationStatus);
@@ -49,6 +50,31 @@ export default function JobCard({
   const displayFairMatch = isFairMatch !== undefined 
     ? isFairMatch 
     : (isSkillMatch && fairnessScore >= 70);
+
+  // ── Skill-match gate: worker must have the required skill to apply ──
+  const requiredSkill = job?.requiredSkill || null;
+
+  // Aliases: skills that are considered equivalent for matching purposes
+  const SKILL_ALIASES = {
+    plumbing:    ['plumbing', 'plumber'],
+    plumber:     ['plumbing', 'plumber'],
+    electrical:  ['electrical', 'electrician'],
+    electrician: ['electrical', 'electrician'],
+    masonry:     ['masonry', 'masonary'],
+    masonary:    ['masonry', 'masonary'],
+  };
+
+  const hasRequiredSkill = (() => {
+    if (!requiredSkill) return true; // no skill required — anyone can apply
+    if (!workerSkills || workerSkills.length === 0) return false;
+    const reqLower = requiredSkill.toLowerCase();
+    // Get the full set of accepted skill values for this required skill
+    const acceptedSkills = SKILL_ALIASES[reqLower] || [reqLower];
+    return workerSkills.some(
+      (s) => acceptedSkills.includes(s.toLowerCase())
+    );
+  })();
+  const canApply = hasRequiredSkill;
 
   const handleApply = async () => {
     // If custom onApply is provided, use that
@@ -210,7 +236,7 @@ export default function JobCard({
         }}>
           {getStatusBadge()}
         </div>
-      ) : (
+      ) : canApply ? (
         <button
           type="button"
           onClick={handleApply}
@@ -229,6 +255,22 @@ export default function JobCard({
             </>
           ) : 'Apply Now'}
         </button>
+      ) : (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.4rem',
+          padding: '0.65rem',
+          borderRadius: '8px',
+          background: 'rgba(239, 68, 68, 0.06)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          color: '#b91c1c',
+          fontSize: '0.78rem',
+          fontWeight: 600,
+        }}>
+          🔒 Requires <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{requiredSkill}</span> skill
+        </div>
       )}
     </div>
   );

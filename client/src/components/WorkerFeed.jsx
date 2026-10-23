@@ -28,6 +28,7 @@ export default function WorkerFeed({
   token,
   onJobApplied,
   initialLocation = DEFAULT_LOCATION,
+  workerSkills = [],
 }) {
   // ── Top-level state: Shared between NearbyJobFilter and JobMap ──────────────
   const [jobs, setJobs] = useState([]);
@@ -138,6 +139,7 @@ export default function WorkerFeed({
         onJobsFetched={handleJobsFetched}
         hideEmbeddedMap={true}
         showJobCards={true}
+        workerSkills={workerSkills}
       />
     </div>
   );

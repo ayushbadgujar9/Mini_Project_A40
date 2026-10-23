@@ -36,38 +36,6 @@ export const TRADE_CATEGORIES = [
     shortDesc: 'Wiring, fixtures & appliance repairs',
     tags: ['Electrical', 'Wiring', 'Installation', 'Switchboard', 'Commercial Wiring'],
   },
-  {
-    id: 'housekeeping-cleaning',
-    label: 'Housekeeping / Cleaning',
-    icon: '🧹',
-    queryValue: 'Housekeeping / Cleaning',
-    shortDesc: 'Deep cleaning, sanitization & floor care',
-    tags: ['Cleaning', 'Housekeeping', 'Sanitization', 'Sweeping', 'Deep Cleaning'],
-  },
-  {
-    id: 'painting',
-    label: 'Painting',
-    icon: '🎨',
-    queryValue: 'Painting',
-    shortDesc: 'Interior/exterior whitewashing & polish',
-    tags: ['Painting', 'Interior Painting', 'Exterior Painting', 'Whitewashing', 'Polishing'],
-  },
-  {
-    id: 'agriculture-gardening',
-    label: 'Agriculture / Gardening',
-    icon: '🌱',
-    queryValue: 'Agriculture / Gardening',
-    shortDesc: 'Farm harvesting, gardening & pruning',
-    tags: ['Gardening', 'Agriculture', 'Farming', 'Harvesting', 'Landscaping', 'Pruning'],
-  },
-  {
-    id: 'helper-unskilled',
-    label: 'Helper / Unskilled',
-    icon: '🤝',
-    queryValue: 'Helper / Unskilled',
-    shortDesc: 'Loading, moving & site assistant labor',
-    tags: ['Helper', 'Unskilled', 'Loading', 'Warehouse', 'Shifting', 'Labor'],
-  },
 ];
 
 /**

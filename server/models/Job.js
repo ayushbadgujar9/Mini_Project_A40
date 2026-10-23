@@ -173,10 +173,13 @@ jobSchema.index({ location: '2dsphere' });
 const SKILL_TO_CATEGORY_MAP = {
   construction: 'Construction / Masonry',
   masonry:      'Construction / Masonry',
+  masonary:     'Construction / Masonry', // alias
   carpentry:    'Construction / Masonry',
   welding:      'Construction / Masonry',
   plumbing:     'Plumbing',
+  plumber:      'Plumbing',      // alias
   electrical:   'Electrical',
+  electrician:  'Electrical',   // alias
   cleaning:     'Housekeeping / Cleaning',
   cooking:      'Housekeeping / Cleaning',
   painting:     'Painting',
@@ -188,10 +191,13 @@ const SKILL_TO_CATEGORY_MAP = {
 const DEFAULT_SKILLS_MAP = {
   construction: ['construction', 'masonry', 'building'],
   masonry:      ['masonry', 'brickwork', 'concrete'],
+  masonary:     ['masonry', 'brickwork', 'concrete'], // alias
   carpentry:    ['carpentry', 'woodwork', 'furniture'],
   welding:      ['welding', 'fabrication', 'arc welding'],
-  plumbing:     ['plumbing', 'pipe fitting', 'drainage'],
-  electrical:   ['electrical', 'wiring', 'installation'],
+  plumbing:     ['plumbing', 'plumber', 'pipe fitting', 'drainage'],
+  plumber:      ['plumbing', 'plumber', 'pipe fitting', 'drainage'], // alias
+  electrical:   ['electrical', 'electrician', 'wiring', 'installation'],
+  electrician:  ['electrician', 'electrical', 'wiring', 'installation'], // alias
   cleaning:     ['cleaning', 'housekeeping', 'sanitization'],
   cooking:      ['cooking', 'kitchen', 'meal preparation'],
   painting:     ['painting', 'whitewashing', 'polishing'],

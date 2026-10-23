@@ -105,6 +105,7 @@ export default function JobMap({
   className = 'h-[400px] w-full rounded-lg',
   height = '400px',
   zoom = 13,
+  workerSkills = [],
 }) {
   const [applyingJobId, setApplyingJobId] = useState(null);
   const [appliedJobIds, setAppliedJobIds] = useState(new Set());
@@ -332,28 +333,61 @@ export default function JobMap({
                     </div>
                   )}
 
-                  {/* Plain, functional "Apply Now" button: bg-blue-600 text-white rounded-md py-1.5 px-3 */}
-                  <button
-                    type="button"
-                    className="bg-blue-600 text-white rounded-md py-1.5 px-3 text-sm font-semibold hover:bg-blue-700 transition w-full"
-                    style={{
-                      width: '100%',
-                      backgroundColor: isApplied ? '#059669' : '#2563eb',
-                      color: '#ffffff',
-                      borderRadius: '6px',
-                      padding: '6px 12px',
-                      fontSize: '0.825rem',
-                      fontWeight: 600,
-                      border: 'none',
-                      cursor: isApplied || isApplying ? 'default' : 'pointer',
-                      transition: 'background-color 0.15s ease',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                    }}
-                    onClick={() => !isApplied && !isApplying && handleApply(job)}
-                    disabled={isApplied || isApplying}
-                  >
-                    {isApplying ? 'Applying...' : isApplied ? '✓ Applied' : 'Apply Now'}
-                  </button>
+                  {/* Skill-gate: only show Apply if worker has required skill */}
+                  {(() => {
+                    const requiredSkill = job.requiredSkill || null;
+                    const hasSkill = !requiredSkill ||
+                      (workerSkills.length > 0 &&
+                        workerSkills.some(
+                          (s) => s.toLowerCase() === requiredSkill.toLowerCase()
+                        ));
+
+                    if (!hasSkill) {
+                      return (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.35rem',
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          background: 'rgba(239, 68, 68, 0.06)',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          color: '#b91c1c',
+                          fontSize: '0.76rem',
+                          fontWeight: 600,
+                          width: '100%',
+                          boxSizing: 'border-box',
+                        }}>
+                          🔒 Requires <span style={{ textTransform: 'capitalize', fontWeight: 700, marginLeft: '3px' }}>{requiredSkill}</span> skill
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        type="button"
+                        className="bg-blue-600 text-white rounded-md py-1.5 px-3 text-sm font-semibold hover:bg-blue-700 transition w-full"
+                        style={{
+                          width: '100%',
+                          backgroundColor: isApplied ? '#059669' : '#2563eb',
+                          color: '#ffffff',
+                          borderRadius: '6px',
+                          padding: '6px 12px',
+                          fontSize: '0.825rem',
+                          fontWeight: 600,
+                          border: 'none',
+                          cursor: isApplied || isApplying ? 'default' : 'pointer',
+                          transition: 'background-color 0.15s ease',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                        }}
+                        onClick={() => !isApplied && !isApplying && handleApply(job)}
+                        disabled={isApplied || isApplying}
+                      >
+                        {isApplying ? 'Applying...' : isApplied ? '✓ Applied' : 'Apply Now'}
+                      </button>
+                    );
+                  })()}
                 </div>
               </Popup>
             </Marker>

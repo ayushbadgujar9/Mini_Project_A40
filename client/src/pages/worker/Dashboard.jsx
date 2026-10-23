@@ -546,6 +546,7 @@ export default function WorkerDashboard() {
           <WorkerFeed
             token={token}
             onJobApplied={() => fetchApplications()}
+            workerSkills={profile?.skills || []}
             initialLocation={
               profile?.location?.coordinates && profile.location.coordinates.length >= 2
                 ? { lat: profile.location.coordinates[1], lng: profile.location.coordinates[0], name: profile.city || 'Kolhapur' }
@@ -623,6 +624,7 @@ export default function WorkerDashboard() {
                 }
                 token={token}
                 onApply={() => fetchApplications()}
+                workerSkills={profile?.skills || []}
                 height="380px"
                 className="h-[380px] w-full rounded-lg"
               />
@@ -678,6 +680,7 @@ export default function WorkerDashboard() {
                   isSkillMatch={job.isSkillMatch}
                   token={token}
                   applicationStatus={getAppStatusForJob(job._id)}
+                  workerSkills={profile?.skills || []}
                   onApply={() => {
                     // Refresh applications after applying
                     fetchApplications();

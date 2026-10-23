@@ -106,6 +106,17 @@ function escapeRegex(text) {
  * Uses MongoDB's $in operator with case-insensitive regex ($options: 'i')
  * to filter against `category` and `skillsRequired` array fields in the Job schema.
  */
+// Map of human-facing category labels to all matching requiredSkill values (including aliases).
+// This ensures clicking e.g. "Plumbing" in the UI finds jobs posted with requiredSkill 'plumber'
+// as well as 'plumbing', and "Electrical" also finds jobs posted as 'electrician', etc.
+const CATEGORY_LABEL_TO_SKILL_ALIASES = {
+  'plumbing':               ['plumbing', 'plumber'],
+  'electrical':             ['electrical', 'electrician'],
+  'construction / masonry': ['masonry', 'masonary', 'construction', 'carpentry', 'welding'],
+  'construction':           ['construction', 'masonry', 'masonary', 'carpentry', 'welding'],
+  'masonry':                ['masonry', 'masonary', 'construction'],
+};
+
 function buildCategoryAndSkillsQuery(reqQuery) {
   const conditions = [];
 
@@ -121,13 +132,33 @@ function buildCategoryAndSkillsQuery(reqQuery) {
     .filter((c) => c && c.toLowerCase() !== 'all' && c.toLowerCase() !== 'all jobs');
 
   if (categories.length > 0) {
+    // Build a combined $or that matches either:
+    //   (a) the job's category field (regex match), OR
+    //   (b) the job's requiredSkill field via expanded aliases
+    const orClauses = [];
     const categoryRegexes = categories.map((cat) => new RegExp(escapeRegex(cat), 'i'));
-    conditions.push({
-      $or: [
-        { category: { $in: categoryRegexes } },
-        { requiredSkill: { $in: categoryRegexes } },
-      ],
+    orClauses.push({ category: { $in: categoryRegexes } });
+
+    // Expand each category label to its known requiredSkill aliases
+    const expandedSkillValues = new Set();
+    categories.forEach((cat) => {
+      const aliases = CATEGORY_LABEL_TO_SKILL_ALIASES[cat.toLowerCase()];
+      if (aliases) {
+        aliases.forEach((a) => expandedSkillValues.add(a));
+      } else {
+        // Fallback: also try matching requiredSkill directly by the category string
+        expandedSkillValues.add(cat.toLowerCase());
+      }
     });
+
+    if (expandedSkillValues.size > 0) {
+      const skillAliasRegexes = Array.from(expandedSkillValues).map(
+        (s) => new RegExp(`^${escapeRegex(s)}$`, 'i')
+      );
+      orClauses.push({ requiredSkill: { $in: skillAliasRegexes } });
+    }
+
+    conditions.push({ $or: orClauses });
   }
 
   // Parse skills (comma-separated string or array; also support reqQuery.skill)
