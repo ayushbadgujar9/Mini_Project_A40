@@ -43,6 +43,8 @@ export default function WorkerDashboard() {
   const [applications,    setApplications]    = useState([]);
   const [appsLoading,     setAppsLoading]     = useState(false);
   const [appliedJobIds,   setAppliedJobIds]   = useState(new Set());
+  const [respondingAppId, setRespondingAppId] = useState(null);
+  const [respondMsg,      setRespondMsg]      = useState(null);
 
   // ── Fetch profile ──────────────────────────────────────────────────────────
   const fetchProfile = useCallback(() => {
@@ -102,6 +104,37 @@ export default function WorkerDashboard() {
       setAppsLoading(false);
     }
   }, [token]);
+
+  // Worker accepts or rejects an employer request
+  const handleRespondToOffer = async (appId, action) => {
+    setRespondingAppId(appId);
+    setRespondMsg(null);
+    try {
+      const res = await fetch(`${API}/api/applications/${appId}/respond`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setRespondMsg({
+        type: action === 'accept' ? 'success' : 'info',
+        text: data.message,
+      });
+      await fetchApplications();
+      await fetchJobs();
+    } catch (err) {
+      setRespondMsg({
+        type: 'error',
+        text: err.message || 'Failed to respond to request.',
+      });
+    } finally {
+      setRespondingAppId(null);
+    }
+  };
 
 
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
@@ -366,6 +399,58 @@ export default function WorkerDashboard() {
         </div>
       )}
 
+      {/* ── Pending Offers Banner ── */}
+      {(() => {
+        const pendingOffers = applications.filter(
+          (a) => a.status === 'offered' || (a.initiatedBy === 'employer' && a.status === 'pending')
+        );
+        if (pendingOffers.length === 0) return null;
+        return (
+          <div style={{
+            maxWidth: 900,
+            margin: '0 auto 1.5rem',
+            padding: '1rem 1.25rem',
+            borderRadius: 'var(--radius-lg, 16px)',
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.08))',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '1rem',
+            animation: 'fadeIn 300ms ease',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '2rem' }}>📩</span>
+              <div>
+                <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: '0.98rem' }}>
+                  You have {pendingOffers.length} Job Request{pendingOffers.length !== 1 ? 's' : ''} from Employer{pendingOffers.length !== 1 ? 's' : ''}!
+                </div>
+                <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>
+                  An employer wants to hire you. Accept to freeze the job and start working.
+                </div>
+              </div>
+            </div>
+            <button
+              id="view-requests-btn"
+              onClick={() => setActiveTab('applications')}
+              style={{
+                padding: '0.6rem 1.2rem',
+                borderRadius: 'var(--radius-md, 12px)',
+                background: '#f59e0b',
+                color: '#000',
+                fontWeight: 800,
+                fontSize: '0.85rem',
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              View & Respond →
+            </button>
+          </div>
+        );
+      })()}
+
       {/* ══════════════════════════════════════════════════════════════════
           TAB SWITCHER — Nearby / Jobs / My Applications
       ══════════════════════════════════════════════════════════════════ */}
@@ -629,6 +714,21 @@ export default function WorkerDashboard() {
             </button>
           </div>
 
+          {respondMsg && (
+            <div style={{
+              margin: '0.75rem 1rem 0',
+              padding: '0.75rem 1rem',
+              borderRadius: 'var(--radius-md, 12px)',
+              background: respondMsg.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+              border: `1px solid ${respondMsg.type === 'error' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+              color: respondMsg.type === 'error' ? '#ef4444' : '#10b981',
+              fontSize: '0.88rem',
+              fontWeight: 600,
+            }}>
+              {respondMsg.text}
+            </div>
+          )}
+
           {appsLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem' }}>
               {[1, 2, 3].map((n) => <div key={n} className="shimmer-card" style={{ height: 90 }} />)}
@@ -636,7 +736,7 @@ export default function WorkerDashboard() {
           ) : applications.length === 0 ? (
             <div className="jobs-empty">
               <div className="jobs-empty-icon">📭</div>
-              <p>No applications yet. Browse open jobs and apply to get started!</p>
+              <p>No applications or job requests yet. Browse open jobs and apply to get started!</p>
               <button
                 onClick={() => setActiveTab('jobs')}
                 style={{
@@ -655,9 +755,14 @@ export default function WorkerDashboard() {
               </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: '0.75rem 1rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem 1rem' }}>
               {applications.map((app) => (
-                <ApplicationRow key={app._id} application={app} />
+                <ApplicationRow
+                  key={app._id}
+                  application={app}
+                  responding={respondingAppId === app._id}
+                  onRespond={(action) => handleRespondToOffer(app._id, action)}
+                />
               ))}
             </div>
           )}
@@ -681,18 +786,21 @@ export default function WorkerDashboard() {
 }
 
 // ── ApplicationRow ────────────────────────────────────────────────────────────
-function ApplicationRow({ application }) {
+function ApplicationRow({ application, responding, onRespond }) {
   const job = application.job;
   const skill = SKILLS.find((s) => s.id === job?.requiredSkill);
   const status = application.status;
+  const isOffered = status === 'offered' || (application.initiatedBy === 'employer' && status === 'pending');
+  const isAccepted = status === 'accepted';
 
   const statusConfig = {
+    offered:   { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.45)', color: '#d97706', icon: '📩', label: 'Job Request from Employer' },
     pending:   { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.30)', color: '#b45309', icon: '⏳', label: 'Pending' },
-    accepted:  { bg: 'rgba(16, 185, 129, 0.10)', border: 'rgba(16, 185, 129, 0.30)', color: '#047857', icon: '✅', label: 'Hired' },
-    rejected:  { bg: 'rgba(239, 68, 68, 0.10)', border: 'rgba(239, 68, 68, 0.30)', color: '#b91c1c', icon: '❌', label: 'Rejected' },
+    accepted:  { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.45)', color: '#047857', icon: '🔒', label: 'Assigned & Freezed' },
+    rejected:  { bg: 'rgba(239, 68, 68, 0.10)', border: 'rgba(239, 68, 68, 0.30)', color: '#b91c1c', icon: '❌', label: 'Declined' },
     completed: { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.30)', color: '#4338ca', icon: '🏆', label: 'Completed' },
   };
-  const sc = statusConfig[status] || statusConfig.pending;
+  const sc = isOffered ? statusConfig.offered : (statusConfig[status] || statusConfig.pending);
 
   const appliedDate = new Date(application.appliedAt).toLocaleDateString('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric',
@@ -704,61 +812,111 @@ function ApplicationRow({ application }) {
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: '1rem',
-      padding: '0.85rem 1.1rem',
+      padding: '1rem 1.25rem',
       background: 'var(--clr-bg-card, #ffffff)',
       border: '1px solid var(--clr-border, #e2e8f0)',
       borderRadius: 'var(--radius-md, 12px)',
       transition: 'all 150ms',
       flexWrap: 'wrap',
-      borderLeft: `3px solid ${sc.border}`,
+      borderLeft: `4px solid ${sc.border}`,
+      boxShadow: isOffered ? '0 4px 16px rgba(245, 158, 11, 0.1)' : 'none',
     }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 260 }}>
         <div style={{
-          fontSize: '0.92rem',
+          fontSize: '0.96rem',
           fontWeight: 700,
           color: 'var(--clr-text-heading, #0f172a)',
-          marginBottom: '0.3rem',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
+          marginBottom: '0.35rem',
         }}>
           {job?.title || 'Unknown Job'}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', fontSize: '0.78rem', color: 'var(--clr-text-muted, #475569)' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.55rem', alignItems: 'center', fontSize: '0.8rem', color: 'var(--clr-text-muted, #475569)' }}>
           {skill && (
             <span style={{
               padding: '0.15rem 0.55rem',
               borderRadius: '9999px',
               background: 'var(--clr-bg-mid, #f1f5f9)',
               border: '1px solid var(--clr-border, #e2e8f0)',
-              fontSize: '0.72rem',
+              fontSize: '0.74rem',
               fontWeight: 600,
             }}>
               {skill.icon} {skill.label}
             </span>
           )}
-          {job?.dailyWage && <span style={{ fontWeight: 600 }}>₹{job.dailyWage}/day</span>}
+          {job?.dailyWage && <span style={{ fontWeight: 700, color: '#0f172a' }}>₹{job.dailyWage}/day</span>}
           {job?.city && <span>📍 {job.city}</span>}
-          <span style={{ color: 'var(--clr-text-faint, #94a3b8)' }}>Applied {appliedDate}</span>
+          <span style={{ color: 'var(--clr-text-faint, #94a3b8)' }}>{appliedDate}</span>
           {job?.employerId?.name && <span>🏢 {job.employerId.name}</span>}
+          {isAccepted && job?.employerId?.phoneNumber && (
+            <span style={{ fontWeight: 700, color: '#059669', background: 'rgba(16,185,129,0.1)', padding: '0.15rem 0.5rem', borderRadius: '6px' }}>
+              📞 Call: {job.employerId.phoneNumber}
+            </span>
+          )}
         </div>
       </div>
-      <span style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '0.3rem',
-        padding: '0.35rem 0.85rem',
-        borderRadius: '9999px',
-        fontSize: '0.76rem',
-        fontWeight: 700,
-        background: sc.bg,
-        border: `1px solid ${sc.border}`,
-        color: sc.color,
-        flexShrink: 0,
-        letterSpacing: '0.01em',
-      }}>
-        {sc.icon} {sc.label}
-      </span>
+
+      {/* ── Status badge or Accept / Decline buttons ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+        {isOffered ? (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              id={`accept-offer-${application._id}`}
+              onClick={() => onRespond('accept')}
+              disabled={responding}
+              style={{
+                padding: '0.55rem 1.1rem',
+                borderRadius: 'var(--radius-md, 10px)',
+                background: 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '0.84rem',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.25)',
+              }}
+            >
+              {responding ? 'Processing…' : '✅ Accept Job'}
+            </button>
+            <button
+              id={`reject-offer-${application._id}`}
+              onClick={() => onRespond('reject')}
+              disabled={responding}
+              style={{
+                padding: '0.55rem 0.95rem',
+                borderRadius: 'var(--radius-md, 10px)',
+                background: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.3)',
+                color: '#ef4444',
+                fontWeight: 700,
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+              }}
+            >
+              ❌ Decline
+            </button>
+          </div>
+        ) : (
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            padding: '0.4rem 0.9rem',
+            borderRadius: '9999px',
+            fontSize: '0.78rem',
+            fontWeight: 700,
+            background: sc.bg,
+            border: `1px solid ${sc.border}`,
+            color: sc.color,
+            flexShrink: 0,
+            letterSpacing: '0.01em',
+          }}>
+            {sc.icon} {sc.label}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

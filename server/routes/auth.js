@@ -1,10 +1,44 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const User = require('../models/User');
-const { generateAndSendOTP } = require('../utils/otpService');
+const { sendOtpEmail, isSmtpConfigured } = require('../utils/mailer');
 
 const router = express.Router();
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Pending Registration Store
+// Holds temporary registration data for users who have not yet verified their
+// email. Records auto-expire after 10 minutes and are never saved to the DB
+// until OTP confirmation succeeds.
+// ──────────────────────────────────────────────────────────────────────────────
+const pendingRegistrations = new Map(); // key: normalizedEmail
+
+const PENDING_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/** Remove any expired pending entries (called on each new registration). */
+function cleanupExpiredPending() {
+  const now = Date.now();
+  for (const [email, entry] of pendingRegistrations.entries()) {
+    if (now > entry.expiresAt) {
+      pendingRegistrations.delete(email);
+    }
+  }
+}
+
+/**
+ * generateAndSendOtpDirect(email, plainOtp)
+ * Generates an OTP, hashes it, and returns { hashedOtp, expiresAt, plainOtp }.
+ * Used for pending registrations where no DB record exists yet.
+ */
+async function generateOtpBundle() {
+  const plainOtp = String(crypto.randomInt(100000, 1000000));
+  const salt = await bcrypt.genSalt(10);
+  const hashedOtp = await bcrypt.hash(plainOtp, salt);
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 min
+  return { plainOtp, hashedOtp, expiresAt };
+}
 
 const ADMIN_EMAILS = [
   'akulkarni.1011@gmail.com',
@@ -28,6 +62,10 @@ const signToken = (user) =>
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/register
 // Accepts: { name, email, role, password, phoneNumber }
+//
+// Does NOT create a DB record immediately. Instead the registration data is
+// stored in an in-memory pending store and an OTP is sent. The User document
+// is only created in MongoDB after the email is successfully verified.
 // ──────────────────────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
@@ -51,7 +89,7 @@ router.post('/register', async (req, res) => {
       assignedRole = 'admin';
     }
 
-    // Check if user already exists
+    // Check if a fully-saved user already exists in the DB
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       if (isAdminEmail(normalizedEmail) && existingUser.role !== 'admin') {
@@ -69,34 +107,43 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Create new user (automatically verified if admin)
-    const user = new User({
+    cleanupExpiredPending();
+
+    // Generate OTP bundle (no DB write yet)
+    const { plainOtp, hashedOtp, expiresAt } = await generateOtpBundle();
+
+    // Store pending registration (overwrites any previous attempt for same email)
+    pendingRegistrations.set(normalizedEmail, {
       name: name.trim(),
       email: normalizedEmail,
       role: assignedRole,
       password: password && password.trim() ? password.trim() : undefined,
       phoneNumber: phoneNumber && phoneNumber.trim() ? phoneNumber.trim() : undefined,
-      adminId: assignedRole === 'admin' ? (normalizedEmail.startsWith('ayush') ? 'ADMIN003' : 'ADMIN001') : undefined,
-      isVerified: assignedRole === 'admin',
-      isEmailVerified: false,
-      verificationStatus: assignedRole === 'admin' ? 'verified' : 'unverified',
+      hashedOtp,
+      expiresAt: expiresAt.getTime(),
     });
-    await user.save();
 
-    // Call generateAndSendOTP
-    const otpResult = await generateAndSendOTP(normalizedEmail);
+    console.log(`🔑 [OTP Code Generated for ${normalizedEmail}]: ${plainOtp}`);
 
-    res.status(201).json({
+    // Send OTP email
+    let devOtp;
+    const configured = isSmtpConfigured();
+    try {
+      await sendOtpEmail(normalizedEmail, plainOtp);
+      devOtp = configured ? undefined : plainOtp;
+    } catch (mailErr) {
+      console.warn('⚠️  OTP email failed:', mailErr.message);
+      devOtp = plainOtp; // Always expose in fallback
+    }
+
+    return res.status(201).json({
       message: 'Registration initiated. Verification code sent to your email.',
       email: normalizedEmail,
-      expiresInSeconds: otpResult.expiresInSeconds,
-      devOtp: otpResult.devOtp,
+      expiresInSeconds: 300,
+      devOtp,
       isNewUser: true,
     });
   } catch (err) {
-    if (err.code === 11000) {
-      return res.status(409).json({ message: 'An account with this email already exists.' });
-    }
     console.error('Registration error:', err);
     res.status(500).json({ message: 'Server error during registration.', error: err.message });
   }
@@ -199,14 +246,31 @@ router.post(['/login', '/send-login-otp', '/send-otp'], async (req, res) => {
       await user.save();
     }
 
-    // Call generateAndSendOTP
-    const otpResult = await generateAndSendOTP(normalizedEmail);
+    // Generate OTP and store on user record
+    const { plainOtp, hashedOtp, expiresAt } = await generateOtpBundle();
+    user.currentOtp        = hashedOtp;
+    user.otpExpiresAt      = expiresAt;
+    user.emailOtp          = hashedOtp;
+    user.emailOtpExpiresAt = expiresAt;
+    await user.save();
+
+    console.log(`🔑 [OTP Code Generated for ${normalizedEmail}]: ${plainOtp}`);
+
+    let devOtp;
+    const configured = isSmtpConfigured();
+    try {
+      await sendOtpEmail(normalizedEmail, plainOtp);
+      devOtp = configured ? undefined : plainOtp;
+    } catch (mailErr) {
+      console.warn('⚠️  OTP email failed:', mailErr.message);
+      devOtp = plainOtp;
+    }
 
     res.status(200).json({
       message: `Verification code sent to ${normalizedEmail}. Valid for 5 minutes.`,
       email: normalizedEmail,
-      expiresInSeconds: otpResult.expiresInSeconds,
-      devOtp: otpResult.devOtp,
+      expiresInSeconds: 300,
+      devOtp,
       exists: true,
     });
   } catch (err) {
@@ -254,8 +318,11 @@ router.post('/demo-login', async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/verify-otp
 // Accepts: { email, otp }
-// Compares the hash and checks expiration.
-// If valid, updates isVerified: true (if false), clears OTP fields, returns JWT.
+//
+// Two paths:
+//   A) Pending registration — creates the User document in DB only now,
+//      after email is confirmed. Deletes the pending entry on success.
+//   B) Existing user (login OTP) — validates OTP stored in user's DB record.
 // ──────────────────────────────────────────────────────────────────────────────
 router.post(['/verify-otp', '/verify-login-otp', '/confirm-email-otp'], async (req, res) => {
   try {
@@ -269,6 +336,57 @@ router.post(['/verify-otp', '/verify-login-otp', '/confirm-email-otp'], async (r
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+
+    // ── Path A: Pending registration (not yet in DB) ──────────────────────────
+    const pending = pendingRegistrations.get(normalizedEmail);
+    if (pending) {
+      // Check expiry
+      if (Date.now() > pending.expiresAt) {
+        pendingRegistrations.delete(normalizedEmail);
+        return res.status(410).json({ message: 'Verification code has expired. Please register again.' });
+      }
+
+      // Compare OTP
+      const isMatch = await bcrypt.compare(otp.trim(), pending.hashedOtp);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Invalid verification code. Please check and try again.' });
+      }
+
+      // ✅ OTP correct — now create the user in the DB
+      const adminRole = isAdminEmail(normalizedEmail) ? 'admin' : pending.role;
+      const newUser = new User({
+        name:               pending.name,
+        email:              normalizedEmail,
+        role:               adminRole,
+        password:           pending.password,
+        phoneNumber:        pending.phoneNumber,
+        adminId:            adminRole === 'admin'
+                              ? (normalizedEmail.startsWith('ayush') ? 'ADMIN003' : 'ADMIN001')
+                              : undefined,
+        isEmailVerified:    true,
+        isVerified:         adminRole !== 'worker',  // employers & admins auto-verified
+        verificationStatus: adminRole === 'worker' ? 'unverified' : 'verified',
+      });
+      await newUser.save();
+
+      pendingRegistrations.delete(normalizedEmail);
+
+      const token = signToken(newUser);
+      return res.status(200).json({
+        message: 'Verification successful. Welcome to FairConnect!',
+        token,
+        user: {
+          id:              newUser._id,
+          name:            newUser.name,
+          email:           newUser.email,
+          role:            newUser.role,
+          isVerified:      newUser.isVerified,
+          isEmailVerified: newUser.isEmailVerified,
+        },
+      });
+    }
+
+    // ── Path B: Existing user login OTP ──────────────────────────────────────
     const user = await User.findOne({ email: normalizedEmail }).select('+currentOtp +emailOtp');
 
     if (!user) {
@@ -323,11 +441,11 @@ router.post(['/verify-otp', '/verify-login-otp', '/confirm-email-otp'], async (r
       message: 'Verification successful. Welcome to FairConnect!',
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        isVerified: user.isVerified,
+        id:              user._id,
+        name:            user.name,
+        email:           user.email,
+        role:            user.role,
+        isVerified:      user.isVerified,
         isEmailVerified: user.isEmailVerified,
       },
     });

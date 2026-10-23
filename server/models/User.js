@@ -198,6 +198,36 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    // ── Employer Aggregate Rating ────────────────────────────────────────────
+    // Computed from all worker ratings submitted on completed jobs.
+    // Updated each time a worker submits a rating via POST /api/jobs/:id/rate.
+    employerRating: {
+      type: Number,
+      default: null,   // null = no ratings yet
+      min: 1,
+      max: 5,
+    },
+
+    employerRatingCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    // Last 10 feedback snippets shown on the employer's public profile
+    employerFeedbacks: {
+      type: [
+        {
+          jobId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Job' },
+          rating:    { type: Number, min: 1, max: 5 },
+          feedback:  { type: String, trim: true, maxlength: 500 },
+          workerName: { type: String, trim: true },
+          ratedAt:   { type: Date },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true,

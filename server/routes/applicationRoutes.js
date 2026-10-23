@@ -52,8 +52,8 @@ router.get('/my-applications', isWorker, async (req, res) => {
       .sort({ appliedAt: -1 })
       .populate({
         path: 'job',
-        select: 'title requiredSkill dailyWage city status',
-        populate: { path: 'employerId', select: 'name' },
+        select: 'title description requiredSkill dailyWage city status employerId assignedWorkerId offerPendingWorkerId',
+        populate: { path: 'employerId', select: 'name phoneNumber email' },
       })
       .lean();
 
@@ -135,6 +135,82 @@ router.patch('/:id/status', isEmployer, async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ message: 'Failed to update status.', error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/applications/:id/respond
+// Worker accepts or rejects an employer's job request / offer.
+// If accepted:
+//   - application.status = 'accepted'
+//   - job.status = 'assigned' (freezed for all other workers)
+//   - job.assignedWorkerId = worker.id
+//   - job.hiredWorkerId = worker.id
+//   - job.offerPendingWorkerId = null
+// If rejected:
+//   - application.status = 'rejected'
+//   - job.offerPendingWorkerId = null (job remains open)
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch('/:id/respond', isWorker, async (req, res) => {
+  try {
+    const { action } = req.body; // 'accept' | 'reject'
+    if (!['accept', 'reject'].includes(action)) {
+      return res.status(400).json({ message: 'Action must be "accept" or "reject".' });
+    }
+
+    const application = await Application.findById(req.params.id);
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found.' });
+    }
+
+    if (application.worker.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'You are not the recipient of this job request.' });
+    }
+
+    const job = await Job.findById(application.job);
+    if (!job) {
+      return res.status(404).json({ message: 'Job no longer exists.' });
+    }
+
+    if (action === 'accept') {
+      if (job.status === 'closed') {
+        return res.status(400).json({ message: 'This job is already closed.' });
+      }
+      if (job.status === 'assigned' && job.assignedWorkerId?.toString() !== req.user.id.toString()) {
+        return res.status(400).json({ message: 'This job has already been assigned to another worker.' });
+      }
+
+      application.status = 'accepted';
+      await application.save();
+
+      // Freeze the job for all other workers
+      job.status = 'assigned';
+      job.assignedWorkerId = req.user.id;
+      job.hiredWorkerId = req.user.id;
+      job.offerPendingWorkerId = null;
+      await job.save();
+
+      return res.status(200).json({
+        message: 'Job request accepted! The job is now assigned to you and frozen for other workers.',
+        application,
+        job,
+      });
+    } else {
+      application.status = 'rejected';
+      await application.save();
+
+      if (job.offerPendingWorkerId?.toString() === req.user.id.toString()) {
+        job.offerPendingWorkerId = null;
+        await job.save();
+      }
+
+      return res.status(200).json({
+        message: 'Job request declined.',
+        application,
+      });
+    }
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to respond to job request.', error: err.message });
   }
 });
 

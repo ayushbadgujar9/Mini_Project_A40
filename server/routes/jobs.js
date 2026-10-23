@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { isEmployer, verifyToken, isWorker } = require('../middleware/auth');
 const Job  = require('../models/Job');
 const User = require('../models/User');
+const Application = require('../models/Application');
 
 const router = express.Router();
 
@@ -31,9 +32,11 @@ const SKILL_IDS = [
 //
 // Components (max 100 pts):
 //   Proximity  — same city as job           → +30 pts
-//   Need       — days since lastWorkedDate  → up to +50 pts (capped at 60 days)
+//   Need       — days since lastWorkedDate  → up to +50 pts (capped at 50 days)
 //   Verified   — isVerified === true        → +20 pts
 //   Equity adj — penalise high completions  → −0 to −10 pts (fairness to newcomers)
+//
+// New-worker bonus: 25 pts (mid-range) — avoids dominating experienced workers.
 // ─────────────────────────────────────────────────────────────────────────────
 function calcFairnessScore(worker, job) {
   let score = 0;
@@ -56,8 +59,9 @@ function calcFairnessScore(worker, job) {
     // Every day idle = +1 pt, capped at 50
     score += Math.min(daysSince, 50);
   } else {
-    // Never worked → maximum need score (brand new worker)
-    score += 50;
+    // Never worked → mid-range need score (25 pts) so new workers get a fair
+    // boost without overshadowing experienced workers idle for 25+ days.
+    score += 25;
   }
 
   // ── Verification bonus (20 pts) ────────────────────────────────────────────
@@ -69,7 +73,7 @@ function calcFairnessScore(worker, job) {
   const penaltyPer10Jobs = Math.min(Math.floor((worker.totalJobsCompleted || 0) / 10), 10);
   score -= penaltyPer10Jobs;
 
-  return Math.max(0, Math.round(score));
+  return Math.min(100, Math.max(0, Math.round(score)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -420,6 +424,17 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
       return res.status(403).json({ message: 'You do not own this job.' });
     }
 
+    // Find all applications for this job
+    const applications = await Application.find({ job: job._id }).lean();
+    const appliedMap = new Map();
+    applications.forEach((app) => {
+      appliedMap.set(app.worker.toString(), {
+        applicationId: app._id,
+        status: app.status,
+        appliedAt: app.appliedAt,
+      });
+    });
+
     // Find all verified workers who have the required skill (accounting for aliases)
     const skillVariants = [job.requiredSkill];
     if (job.requiredSkill === 'electrician') skillVariants.push('electrical');
@@ -429,20 +444,51 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
     if (job.requiredSkill === 'plumbing') skillVariants.push('plumber');
     if (job.requiredSkill === 'plumber') skillVariants.push('plumbing');
 
+    const appliedWorkerIds = Array.from(appliedMap.keys());
+
     const workers = await User.find({
       role:   'worker',
-      skills: { $in: skillVariants },
+      $or: [
+        { skills: { $in: skillVariants } },
+        { _id: { $in: appliedWorkerIds } },
+      ],
     })
       .select('name skills primarySkill isVerified city lastWorkedDate totalJobsCompleted')
       .lean();
 
-    // Score & rank
-    const ranked = workers
-      .map((w) => ({ ...w, fairnessScore: calcFairnessScore(w, job) }))
-      .sort((a, b) => b.fairnessScore - a.fairnessScore)
-      .slice(0, 10); // Return top 10
+    // Score & enrich workers
+    const scoredWorkers = workers.map((w) => {
+      const appInfo = appliedMap.get(w._id.toString());
+      const isOfferPending = job.offerPendingWorkerId?.toString() === w._id.toString() || appInfo?.status === 'offered';
+      const isAssigned = job.assignedWorkerId?.toString() === w._id.toString() || job.hiredWorkerId?.toString() === w._id.toString() || appInfo?.status === 'accepted';
+      return {
+        ...w,
+        hasApplied: !!appInfo,
+        applicationId: appInfo?.applicationId || null,
+        applicationStatus: appInfo?.status || null,
+        appliedAt: appInfo?.appliedAt || null,
+        isOfferPending,
+        isAssigned,
+        fairnessScore: calcFairnessScore(w, job),
+      };
+    });
 
-    return res.status(200).json({ job, workers: ranked });
+    // Applicants: workers who applied, ranked by fairnessScore
+    const applicants = scoredWorkers
+      .filter((w) => w.hasApplied)
+      .sort((a, b) => b.fairnessScore - a.fairnessScore);
+
+    // All matching workers: ranked by fairnessScore
+    const allMatching = scoredWorkers
+      .slice()
+      .sort((a, b) => b.fairnessScore - a.fairnessScore);
+
+    return res.status(200).json({
+      job,
+      applicants,
+      allWorkers: allMatching,
+      workers: allMatching, // backwards compatibility
+    });
   } catch (err) {
     return res.status(500).json({ message: 'Failed to fetch matches.', error: err.message });
   }
@@ -516,14 +562,22 @@ router.put('/:id/complete', isEmployer, async (req, res) => {
     }
 
     // ── Update job ──────────────────────────────────────────────────────────
-    job.status         = 'closed';
-    job.hiredWorkerId  = workerId;
+    job.status               = 'closed';
+    job.hiredWorkerId        = workerId;
+    job.assignedWorkerId     = workerId;
+    job.offerPendingWorkerId = null;
     await job.save();
 
     // ── Update worker's fairness stats ──────────────────────────────────────
     worker.lastWorkedDate      = new Date();
     worker.totalJobsCompleted  = (worker.totalJobsCompleted || 0) + 1;
     await worker.save();
+
+    // ── Update Application status if exists ─────────────────────────────────
+    await Application.findOneAndUpdate(
+      { job: job._id, worker: workerId },
+      { status: 'completed' }
+    );
 
     return res.status(200).json({
       message: `Job marked complete. ${worker.name}'s stats have been updated.`,
@@ -540,4 +594,194 @@ router.put('/:id/complete', isEmployer, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/jobs/:id/request-worker
+// Employer sends a job request to a matching worker.
+// Body: { workerId }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/request-worker', isEmployer, async (req, res) => {
+  try {
+    const { workerId } = req.body;
+    if (!workerId) return res.status(400).json({ message: 'workerId is required.' });
+
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+    if (job.employerId.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'You do not own this job.' });
+    }
+
+    if (job.status !== 'open') {
+      return res.status(400).json({ message: `Cannot send request. Job status is currently "${job.status}".` });
+    }
+
+    const worker = await User.findById(workerId);
+    if (!worker || worker.role !== 'worker') {
+      return res.status(404).json({ message: 'Worker not found.' });
+    }
+
+    // Update or create Application record
+    let app = await Application.findOne({ job: job._id, worker: workerId });
+    if (app) {
+      app.status = 'offered';
+      app.initiatedBy = 'employer';
+      await app.save();
+    } else {
+      app = await Application.create({
+        job: job._id,
+        worker: workerId,
+        employer: job.employerId,
+        status: 'offered',
+        initiatedBy: 'employer',
+      });
+    }
+
+    job.offerPendingWorkerId = workerId;
+    await job.save();
+
+    return res.status(200).json({
+      message: `Job request sent to ${worker.name}. Waiting for worker's acceptance.`,
+      job,
+      application: app,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to send job request.', error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/jobs/:id/cancel-request
+// Employer cancels the pending request sent to a worker.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/cancel-request', isEmployer, async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+    if (job.employerId.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'You do not own this job.' });
+    }
+
+    if (job.offerPendingWorkerId) {
+      await Application.findOneAndUpdate(
+        { job: job._id, worker: job.offerPendingWorkerId },
+        { status: 'rejected' }
+      );
+      job.offerPendingWorkerId = null;
+      await job.save();
+    }
+
+    return res.status(200).json({
+      message: 'Job request cancelled.',
+      job,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to cancel job request.', error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/jobs/:id/rate
+// Hired worker submits a rating (1–5) and optional feedback for the employer
+// after the job is closed.
+//
+// Auth:  Worker JWT (isWorker middleware)
+// Body:  { rating: Number (1–5), feedback?: String }
+// Rules:
+//   • Job must be closed (status === 'closed')
+//   • Caller must be the hiredWorkerId on the job
+//   • Rating can only be submitted once (ratingSubmitted flag)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:id/rate', isWorker, async (req, res) => {
+  try {
+    const { rating, feedback } = req.body;
+
+    // ── Validate rating ──────────────────────────────────────────────────────
+    const ratingNum = Number(rating);
+    if (!rating || isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+      return res.status(400).json({ message: 'Rating must be a number between 1 and 5.' });
+    }
+    if (feedback && typeof feedback === 'string' && feedback.trim().length > 500) {
+      return res.status(400).json({ message: 'Feedback cannot exceed 500 characters.' });
+    }
+
+    // ── Fetch job ────────────────────────────────────────────────────────────
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+    // ── Job must be closed ───────────────────────────────────────────────────
+    if (job.status !== 'closed') {
+      return res.status(400).json({ message: 'You can only rate a completed (closed) job.' });
+    }
+
+    // ── Caller must be the hired worker ──────────────────────────────────────
+    if (!job.hiredWorkerId || job.hiredWorkerId.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Only the hired worker can rate this job.' });
+    }
+
+    // ── Prevent duplicate ratings ────────────────────────────────────────────
+    if (job.ratingSubmitted) {
+      return res.status(409).json({ message: 'You have already submitted a rating for this job.' });
+    }
+
+    // ── Save rating on the job ───────────────────────────────────────────────
+    job.workerRating    = ratingNum;
+    job.workerFeedback  = feedback ? feedback.trim() : null;
+    job.ratingSubmitted = true;
+    job.ratedAt         = new Date();
+    await job.save();
+
+    // ── Update employer's aggregate rating ───────────────────────────────────
+    const employer = await User.findById(job.employerId);
+    if (employer) {
+      const prevCount  = employer.employerRatingCount || 0;
+      const prevRating = employer.employerRating || 0;
+
+      // Recalculate running average
+      const newCount  = prevCount + 1;
+      const newRating = parseFloat(
+        ((prevRating * prevCount + ratingNum) / newCount).toFixed(2)
+      );
+
+      employer.employerRatingCount = newCount;
+      employer.employerRating      = newRating;
+
+      // Keep the last 10 feedback entries (newest first)
+      const worker = await User.findById(req.user.id).select('name');
+      employer.employerFeedbacks.unshift({
+        jobId:      job._id,
+        rating:     ratingNum,
+        feedback:   feedback ? feedback.trim() : null,
+        workerName: worker ? worker.name : 'Anonymous',
+        ratedAt:    job.ratedAt,
+      });
+      if (employer.employerFeedbacks.length > 10) {
+        employer.employerFeedbacks = employer.employerFeedbacks.slice(0, 10);
+      }
+
+      await employer.save();
+    }
+
+    return res.status(200).json({
+      message: 'Thank you! Your rating has been submitted.',
+      jobId:          job._id,
+      workerRating:   job.workerRating,
+      workerFeedback: job.workerFeedback,
+      ratedAt:        job.ratedAt,
+      employer: employer
+        ? {
+            _id:                employer._id,
+            name:               employer.name,
+            employerRating:     employer.employerRating,
+            employerRatingCount: employer.employerRatingCount,
+          }
+        : null,
+    });
+  } catch (err) {
+    console.error('Rate job error:', err);
+    return res.status(500).json({ message: 'Failed to submit rating.', error: err.message });
+  }
+});
+
 module.exports = router;
+

@@ -41,8 +41,9 @@ export default function EmployerDashboard() {
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleLogout = () => { logout(); navigate('/login', { replace: true }); };
 
-  const openCount   = myJobs.filter((j) => j.status === 'open').length;
-  const closedCount = myJobs.filter((j) => j.status === 'closed').length;
+  const openCount     = myJobs.filter((j) => j.status === 'open').length;
+  const assignedCount = myJobs.filter((j) => j.status === 'assigned').length;
+  const closedCount   = myJobs.filter((j) => j.status === 'closed').length;
 
   return (
     <div className="dashboard-page">
@@ -68,9 +69,10 @@ export default function EmployerDashboard() {
           profiles, and build your team with FairConnect&apos;s informal workforce.
         </p>
         <div style={{ marginTop: '2rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <StatCard icon="📢" label="Active Postings"  value={jobsLoading ? '…' : openCount}   color="var(--clr-employer)" />
-          <StatCard icon="🔒" label="Closed Postings"  value={jobsLoading ? '…' : closedCount} color="var(--clr-admin)" />
-          <StatCard icon="📋" label="Total Posted"     value={jobsLoading ? '…' : myJobs.length} color="var(--clr-secondary)" />
+          <StatCard icon="📢" label="Open Postings"     value={jobsLoading ? '…' : openCount}   color="var(--clr-employer)" />
+          <StatCard icon="🤝" label="Assigned (Active)" value={jobsLoading ? '…' : assignedCount} color="#34d399" />
+          <StatCard icon="🔒" label="Closed Postings"   value={jobsLoading ? '…' : closedCount} color="var(--clr-admin)" />
+          <StatCard icon="📋" label="Total Posted"      value={jobsLoading ? '…' : myJobs.length} color="var(--clr-secondary)" />
         </div>
       </section>
 
@@ -169,15 +171,15 @@ function EmployerJobRow({ job }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <span className={`job-status-badge ${job.status}`}>
-          {job.status === 'open' ? '🟢 Open' : '🔴 Closed'}
+          {job.status === 'open' ? '🟢 Open' : job.status === 'assigned' ? '🔒 Assigned' : '🔴 Closed'}
         </span>
-        {job.status === 'open' && (
+        {(job.status === 'open' || job.status === 'assigned') && (
           <button
             id={`view-suggestions-btn-${job._id}`}
             className="btn-suggestions"
             onClick={() => navigate(`/employer/jobs/${job._id}/suggested`)}
           >
-            ⚖️ Suggested Workers
+            {job.status === 'assigned' ? '🤝 View Assigned Job' : '⚖️ Suggested Workers'}
           </button>
         )}
         {job.status === 'closed' && (

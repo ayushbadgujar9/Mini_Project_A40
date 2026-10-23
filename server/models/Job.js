@@ -98,10 +98,24 @@ const jobSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['open', 'closed'],
-        message: 'Status must be either open or closed.',
+        values: ['open', 'assigned', 'closed'],
+        message: 'Status must be open, assigned, or closed.',
       },
       default: 'open',
+    },
+
+    // Worker currently assigned to the job (freezed)
+    assignedWorkerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+
+    // Worker who currently has a pending job request/offer from employer
+    offerPendingWorkerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
 
     isFlagged: {
@@ -111,6 +125,32 @@ const jobSchema = new mongoose.Schema(
 
     flagReason: {
       type: String,
+      default: null,
+    },
+
+    // ── Worker Rating & Feedback (submitted after job completion) ─────────────
+    // Filled by the hired worker to rate the employer once the job is closed.
+    workerRating: {
+      type: Number,
+      min: [1, 'Rating must be at least 1.'],
+      max: [5, 'Rating cannot exceed 5.'],
+      default: null,
+    },
+
+    workerFeedback: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'Feedback cannot exceed 500 characters.'],
+      default: null,
+    },
+
+    ratingSubmitted: {
+      type: Boolean,
+      default: false,
+    },
+
+    ratedAt: {
+      type: Date,
       default: null,
     },
   },

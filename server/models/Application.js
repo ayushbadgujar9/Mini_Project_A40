@@ -27,10 +27,16 @@ const applicationSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: {
-        values: ['pending', 'accepted', 'rejected', 'completed'],
-        message: 'Status must be one of: pending, accepted, rejected, completed.',
+        values: ['pending', 'offered', 'accepted', 'rejected', 'completed'],
+        message: 'Status must be one of: pending, offered, accepted, rejected, completed.',
       },
       default: 'pending',
+    },
+
+    initiatedBy: {
+      type: String,
+      enum: ['worker', 'employer'],
+      default: 'worker',
     },
 
     appliedAt: {
