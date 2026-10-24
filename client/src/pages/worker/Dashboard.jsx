@@ -5,6 +5,8 @@ import JobCard from '../../components/JobCard';
 import JobMap from '../../components/JobMap';
 import WorkerFeed from '../../components/WorkerFeed';
 import SkillCategoryFilter from '../../components/SkillCategoryFilter';
+import ChatDrawer, { ChatButton, LockedChatHint, useChatUnreadCounts } from '../../components/ChatDrawer';
+
 
 const API = 'http://localhost:5000';
 
@@ -45,6 +47,10 @@ export default function WorkerDashboard() {
   const [appliedJobIds,   setAppliedJobIds]   = useState(new Set());
   const [respondingAppId, setRespondingAppId] = useState(null);
   const [respondMsg,      setRespondMsg]      = useState(null);
+
+  // ── Chat drawer ────────────────────────────────────────────────────────────
+  const [chatDrawer, setChatDrawer] = useState(null); // { applicationId, otherPartyName, isReadOnly }
+  const unreadCounts = useChatUnreadCounts(token);
 
   // ── Fetch profile ──────────────────────────────────────────────────────────
   const fetchProfile = useCallback(() => {
@@ -765,6 +771,12 @@ export default function WorkerDashboard() {
                   application={app}
                   responding={respondingAppId === app._id}
                   onRespond={(action) => handleRespondToOffer(app._id, action)}
+                  unreadCount={unreadCounts[app._id] || 0}
+                  onOpenChat={() => setChatDrawer({
+                    applicationId: app._id,
+                    otherPartyName: app.job?.employerId?.name || 'Employer',
+                    isReadOnly: app.status === 'completed',
+                  })}
                 />
               ))}
             </div>
@@ -784,17 +796,30 @@ export default function WorkerDashboard() {
           }}
         />
       )}
+
+      {/* ── Chat Drawer ── */}
+      {chatDrawer && (
+        <ChatDrawer
+          open={!!chatDrawer}
+          onClose={() => setChatDrawer(null)}
+          applicationId={chatDrawer.applicationId}
+          token={token}
+          myUserId={user?.id}
+          otherPartyName={chatDrawer.otherPartyName}
+          isReadOnly={chatDrawer.isReadOnly}
+        />
+      )}
     </div>
   );
 }
 
 // ── ApplicationRow ────────────────────────────────────────────────────────────
-function ApplicationRow({ application, responding, onRespond }) {
+function ApplicationRow({ application, responding, onRespond, unreadCount = 0, onOpenChat }) {
   const job = application.job;
   const skill = SKILLS.find((s) => s.id === job?.requiredSkill);
   const status = application.status;
   const isOffered = status === 'offered' || (application.initiatedBy === 'employer' && status === 'pending');
-  const isAccepted = status === 'accepted';
+  const isChatEligible = status === 'accepted' || status === 'completed';
 
   const statusConfig = {
     offered:   { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.45)', color: '#d97706', icon: '📩', label: 'Job Request from Employer' },
@@ -850,11 +875,6 @@ function ApplicationRow({ application, responding, onRespond }) {
           {job?.city && <span>📍 {job.city}</span>}
           <span style={{ color: 'var(--clr-text-faint, #94a3b8)' }}>{appliedDate}</span>
           {job?.employerId?.name && <span>🏢 {job.employerId.name}</span>}
-          {isAccepted && job?.employerId?.phoneNumber && (
-            <span style={{ fontWeight: 700, color: '#059669', background: 'rgba(16,185,129,0.1)', padding: '0.15rem 0.5rem', borderRadius: '6px' }}>
-              📞 Call: {job.employerId.phoneNumber}
-            </span>
-          )}
         </div>
       </div>
 
@@ -919,6 +939,16 @@ function ApplicationRow({ application, responding, onRespond }) {
             {sc.icon} {sc.label}
           </span>
         )}
+
+        {/* ── Chat / Contact gate ── */}
+        {isChatEligible
+          ? <ChatButton
+              applicationId={application._id}
+              unreadCount={unreadCount}
+              onClick={onOpenChat}
+            />
+          : <LockedChatHint />
+        }
       </div>
     </div>
   );

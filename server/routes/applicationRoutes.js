@@ -1,8 +1,10 @@
 const express = require('express');
 const { verifyToken, isWorker, isEmployer } = require('../middleware/auth');
+const { assertChatAccess } = require('../middleware/chatGuard');
 const Application = require('../models/Application');
 const Job  = require('../models/Job');
 const User = require('../models/User');
+const Message = require('../models/Message');
 
 const router = express.Router();
 
@@ -53,7 +55,8 @@ router.get('/my-applications', isWorker, async (req, res) => {
       .populate({
         path: 'job',
         select: 'title description requiredSkill dailyWage city status employerId assignedWorkerId offerPendingWorkerId',
-        populate: { path: 'employerId', select: 'name phoneNumber email' },
+        // Only return employer name here — phone/email are gated behind /contact
+        populate: { path: 'employerId', select: 'name' },
       })
       .lean();
 
@@ -67,6 +70,7 @@ router.get('/my-applications', isWorker, async (req, res) => {
 // GET /api/applications/job/:jobId
 // Returns all applicants for a specific job. Only the employer who
 // posted the job can view this list.
+// Contact details (phoneNumber) are stripped unless status is accepted/completed.
 // ─────────────────────────────────────────────────────────────────────────────
 router.get('/job/:jobId', isEmployer, async (req, res) => {
   try {
@@ -87,7 +91,15 @@ router.get('/job/:jobId', isEmployer, async (req, res) => {
       })
       .lean();
 
-    return res.status(200).json({ applications });
+    const sanitized = applications.map((app) => {
+      if (app.status !== 'accepted' && app.status !== 'completed' && app.worker) {
+        const { phoneNumber, ...safeWorker } = app.worker;
+        return { ...app, worker: safeWorker };
+      }
+      return app;
+    });
+
+    return res.status(200).json({ applications: sanitized });
   } catch (err) {
     return res.status(500).json({ message: 'Failed to fetch applicants.', error: err.message });
   }
@@ -126,8 +138,21 @@ router.patch('/:id/status', isEmployer, async (req, res) => {
     application.status = status;
     await application.save();
 
-    // Populate worker info before returning
-    await application.populate('worker', 'name phoneNumber skills');
+    if (status === 'accepted') {
+      try {
+        await Message.create({
+          application: application._id,
+          sender: application.employer,
+          text: '🎉 Application accepted! You can now coordinate job details and chat here.',
+          readBy: [application.employer],
+        });
+      } catch (e) {
+        console.error('Failed to create welcome message:', e);
+      }
+      await application.populate('worker', 'name phoneNumber skills');
+    } else {
+      await application.populate('worker', 'name skills');
+    }
 
     return res.status(200).json({
       message: `Application ${status} successfully.`,
@@ -190,6 +215,17 @@ router.patch('/:id/respond', isWorker, async (req, res) => {
       job.offerPendingWorkerId = null;
       await job.save();
 
+      try {
+        await Message.create({
+          application: application._id,
+          sender: application.worker,
+          text: '🤝 Job offer accepted! Looking forward to working together.',
+          readBy: [application.worker],
+        });
+      } catch (e) {
+        console.error('Failed to create welcome message:', e);
+      }
+
       return res.status(200).json({
         message: 'Job request accepted! The job is now assigned to you and frozen for other workers.',
         application,
@@ -211,6 +247,33 @@ router.patch('/:id/respond', isWorker, async (req, res) => {
     }
   } catch (err) {
     return res.status(500).json({ message: 'Failed to respond to job request.', error: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/applications/:id/contact
+// Reveals the OTHER party's contact details (name, phoneNumber, email, city,
+// role) ONLY after the application reaches 'accepted' or 'completed' status.
+// Uses the shared assertChatAccess guard to enforce participant + status rules.
+// Sensitive fields (password, OTP, ID image paths) are NEVER returned.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/:id/contact', verifyToken, async (req, res) => {
+  try {
+    const access = await assertChatAccess(req, res);
+    if (!access) return;
+
+    // Fetch ONLY safe, contact-relevant fields of the other party
+    const other = await User.findById(access.otherPartyId)
+      .select('name phoneNumber email city role')
+      .lean();
+
+    if (!other) {
+      return res.status(404).json({ message: 'Other party not found.' });
+    }
+
+    return res.status(200).json({ contact: other });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to fetch contact.', error: err.message });
   }
 });
 

@@ -254,7 +254,7 @@ router.get('/nearby', async (req, res) => {
     }
 
     const jobs = await Job.find(query)
-      .populate('employerId', 'name phoneNumber')
+      .populate('employerId', 'name')
       .lean();
 
     // Calculate and append the distance in kilometers to each returned job object
@@ -430,8 +430,30 @@ router.get('/', async (req, res) => {
 
     const jobs = await Job.find(filter)
       .sort({ createdAt: -1 })
-      .populate('employerId', 'name phoneNumber')
+      .populate('employerId', 'name')
       .lean();
+
+    if (req.query.mine === 'true' && jobs.length > 0) {
+      const jobIds = jobs.map((j) => j._id);
+      const acceptedApps = await Application.find({
+        job: { $in: jobIds },
+        status: { $in: ['accepted', 'completed'] },
+      })
+        .populate('worker', 'name city')
+        .lean();
+
+      const appByJob = new Map();
+      acceptedApps.forEach((a) => {
+        appByJob.set(a.job.toString(), a);
+      });
+
+      const enriched = jobs.map((j) => ({
+        ...j,
+        acceptedApplication: appByJob.get(j._id.toString()) || null,
+      }));
+
+      return res.status(200).json({ jobs: enriched, count: enriched.length });
+    }
 
     return res.status(200).json({ jobs, count: jobs.length });
   } catch (err) {
@@ -456,7 +478,7 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
     }
 
     // Find all applications for this job
-    const applications = await Application.find({ job: job._id }).lean();
+    let applications = await Application.find({ job: job._id }).lean();
     const appliedMap = new Map();
     applications.forEach((app) => {
       appliedMap.set(app.worker.toString(), {
@@ -465,6 +487,27 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
         appliedAt: app.appliedAt,
       });
     });
+
+    // If job has an assigned/hired worker but no application document exists yet, auto-create one
+    const activeAssignedId = job.assignedWorkerId || job.hiredWorkerId;
+    if (activeAssignedId && !appliedMap.has(activeAssignedId.toString())) {
+      try {
+        const fallbackApp = await Application.create({
+          job: job._id,
+          worker: activeAssignedId,
+          employer: job.employerId,
+          status: job.status === 'closed' ? 'completed' : 'accepted',
+          initiatedBy: 'employer',
+        });
+        appliedMap.set(activeAssignedId.toString(), {
+          applicationId: fallbackApp._id,
+          status: fallbackApp.status,
+          appliedAt: fallbackApp.createdAt,
+        });
+      } catch (e) {
+        // Compound index or conflict handled
+      }
+    }
 
     // Find all verified workers who have the required skill (accounting for aliases)
     const skillVariants = [job.requiredSkill];

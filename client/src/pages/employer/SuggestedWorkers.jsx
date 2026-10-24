@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import ChatDrawer, { ChatButton, useChatUnreadCounts } from '../../components/ChatDrawer';
+
 
 const API = 'http://localhost:5000';
 
@@ -19,17 +21,22 @@ const scoreColor = (score) => {
 
 export default function SuggestedWorkers() {
   const { jobId } = useParams();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const navigate  = useNavigate();
 
-  const [data,        setData]        = useState(null);   // { job, applicants, allWorkers, workers }
-  const [activeTab,   setActiveTab]   = useState('applicants'); // 'applicants' | 'all'
+  const [data,        setData]        = useState(null);
+  const [activeTab,   setActiveTab]   = useState('applicants');
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(null);
 
   // Processing state for requests & complete
   const [actionWorkerId, setActionWorkerId] = useState(null);
-  const [feedbackMsg,    setFeedbackMsg]    = useState(null);  // { type, text }
+  const [feedbackMsg,    setFeedbackMsg]    = useState(null);
+
+  // Chat drawer
+  const [chatDrawer, setChatDrawer] = useState(null);
+  const unreadCounts = useChatUnreadCounts(token);
+
 
   const fetchMatches = useCallback(async () => {
     if (!token || !jobId) return;
@@ -347,22 +354,41 @@ export default function SuggestedWorkers() {
           ) : (
             <div className="sw-grid">
               {currentWorkers.map((worker, idx) => (
-                <WorkerCard
-                  key={worker._id}
-                  worker={worker}
-                  rank={idx + 1}
-                  jobStatus={jobStatus}
-                  pendingWorkerId={pendingWorkerId}
-                  assignedWorkerId={assignedWorkerId}
-                  processing={actionWorkerId === worker._id}
-                  onSendRequest={() => handleSendRequest(worker._id, worker.name)}
-                  onCancelRequest={() => handleCancelRequest(worker._id)}
-                  onMarkComplete={() => handleMarkComplete(worker._id, worker.name)}
-                />
+              <WorkerCard
+                key={worker._id}
+                worker={worker}
+                rank={idx + 1}
+                jobStatus={jobStatus}
+                pendingWorkerId={pendingWorkerId}
+                assignedWorkerId={assignedWorkerId}
+                processing={actionWorkerId === worker._id}
+                onSendRequest={() => handleSendRequest(worker._id, worker.name)}
+                onCancelRequest={() => handleCancelRequest(worker._id)}
+                onMarkComplete={() => handleMarkComplete(worker._id, worker.name)}
+                unreadCount={worker.applicationId ? (unreadCounts[worker.applicationId] || 0) : 0}
+                onOpenChat={worker.applicationId ? () => setChatDrawer({
+                  applicationId: worker.applicationId,
+                  otherPartyName: worker.name,
+                  isReadOnly: jobStatus === 'closed',
+                }) : null}
+              />
               ))}
             </div>
           )}
         </>
+      )}
+
+      {/* ── Chat Drawer ── */}
+      {chatDrawer && (
+        <ChatDrawer
+          open={!!chatDrawer}
+          onClose={() => setChatDrawer(null)}
+          applicationId={chatDrawer.applicationId}
+          token={token}
+          myUserId={user?.id}
+          otherPartyName={chatDrawer.otherPartyName}
+          isReadOnly={chatDrawer.isReadOnly}
+        />
       )}
     </div>
   );
@@ -379,6 +405,8 @@ function WorkerCard({
   onSendRequest,
   onCancelRequest,
   onMarkComplete,
+  unreadCount = 0,
+  onOpenChat,
 }) {
   const MAX_SCORE = 100;
   const pct = Math.min((worker.fairnessScore / MAX_SCORE) * 100, 100);
@@ -567,6 +595,15 @@ function WorkerCard({
                 >
                   {processing ? 'Processing…' : '🏁 Mark Complete & Credit Worker'}
                 </button>
+                {/* Chat button for the accepted worker */}
+                {onOpenChat && (
+                  <ChatButton
+                    applicationId={worker.applicationId || worker._id}
+                    unreadCount={unreadCount}
+                    onClick={onOpenChat}
+                    label="💬 Chat with Worker"
+                  />
+                )}
               </>
             ) : (
               <div style={{
@@ -582,9 +619,19 @@ function WorkerCard({
         )}
 
         {jobStatus === 'closed' && (
-          <div style={{ fontSize: '0.82rem', color: '#64748b', textAlign: 'center', padding: '0.5rem' }}>
-            {isAssignedToThisWorker ? '🏆 Completed & Credited' : 'Job is closed'}
-          </div>
+          <>
+            <div style={{ fontSize: '0.82rem', color: '#64748b', textAlign: 'center', padding: '0.5rem' }}>
+              {isAssignedToThisWorker ? '🏆 Completed & Credited' : 'Job is closed'}
+            </div>
+            {isAssignedToThisWorker && onOpenChat && (
+              <ChatButton
+                applicationId={worker.applicationId || worker._id}
+                unreadCount={unreadCount}
+                onClick={onOpenChat}
+                label="💬 View Chat History"
+              />
+            )}
+          </>
         )}
       </div>
 

@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import PostJobForm from '../../components/PostJobForm';
+import ContactCard from '../../components/ContactCard';
+import ChatDrawer, { ChatButton, useChatUnreadCounts } from '../../components/ChatDrawer';
 
 const API = 'http://localhost:5000';
 
@@ -44,6 +46,11 @@ export default function EmployerDashboard() {
   const openCount     = myJobs.filter((j) => j.status === 'open').length;
   const assignedCount = myJobs.filter((j) => j.status === 'assigned').length;
   const closedCount   = myJobs.filter((j) => j.status === 'closed').length;
+
+  // ── Chat drawer ────────────────────────────────────────────────
+  const [chatDrawer, setChatDrawer] = useState(null);
+  const unreadCounts = useChatUnreadCounts(token);
+
 
   return (
     <div className="dashboard-page">
@@ -121,12 +128,34 @@ export default function EmployerDashboard() {
         ) : (
           <div className="employer-jobs-list">
             {myJobs.map((job) => (
-              <EmployerJobRow key={job._id} job={job} />
+              <EmployerJobRow
+                key={job._id}
+                job={job}
+                token={token}
+                unreadCount={job.acceptedApplication ? (unreadCounts[job.acceptedApplication._id] || 0) : 0}
+                onOpenChat={job.acceptedApplication ? () => setChatDrawer({
+                  applicationId: job.acceptedApplication._id,
+                  otherPartyName: job.acceptedApplication.worker?.name || 'Worker',
+                  isReadOnly: job.status === 'closed',
+                }) : null}
+              />
             ))}
           </div>
         )}
       </div>
 
+      {/* ── Chat Drawer ── */}
+      {chatDrawer && (
+        <ChatDrawer
+          open={!!chatDrawer}
+          onClose={() => setChatDrawer(null)}
+          applicationId={chatDrawer.applicationId}
+          token={token}
+          myUserId={user?.id}
+          otherPartyName={chatDrawer.otherPartyName}
+          isReadOnly={chatDrawer.isReadOnly}
+        />
+      )}
     </div>
   );
 }
@@ -150,8 +179,9 @@ function StatCard({ icon, label, value, color }) {
 }
 
 // ── EmployerJobRow ───────────────────────────────────────────────────────────────────────────────
-function EmployerJobRow({ job }) {
+function EmployerJobRow({ job, token, unreadCount = 0, onOpenChat }) {
   const navigate = useNavigate();
+  const [showContact, setShowContact] = useState(false);
   const skill = SKILLS.find(
     (s) =>
       s.id === job.requiredSkill ||
@@ -159,39 +189,84 @@ function EmployerJobRow({ job }) {
       (job.requiredSkill === 'electrical' && s.id === 'electrician') ||
       (job.requiredSkill === 'masonary' && s.id === 'masonry')
   );
+
+  const hasAccepted = !!job.acceptedApplication;
+
   return (
-    <div className="employer-job-row">
-      <div className="ejr-left">
-        <div className="ejr-title">{job.title}</div>
-        <div className="ejr-meta">
-          {skill && <span className="skill-pill">{skill.icon} {skill.label}</span>}
-          <span className="wage-badge">₹{job.dailyWage}/day</span>
-          {job.city && <span className="sw-city-tag">📍 {job.city}</span>}
+    <div className="employer-job-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+        <div className="ejr-left">
+          <div className="ejr-title">{job.title}</div>
+          <div className="ejr-meta">
+            {skill && <span className="skill-pill">{skill.icon} {skill.label}</span>}
+            <span className="wage-badge">₹{job.dailyWage}/day</span>
+            {job.city && <span className="sw-city-tag">📍 {job.city}</span>}
+            {hasAccepted && job.acceptedApplication.worker?.name && (
+              <span style={{ fontSize: '0.82rem', color: '#059669', fontWeight: 700, background: 'rgba(16,185,129,0.1)', padding: '0.15rem 0.5rem', borderRadius: '6px' }}>
+                👷 {job.acceptedApplication.worker.name}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span className={`job-status-badge ${job.status}`}>
+            {job.status === 'open' ? '🟢 Open' : job.status === 'assigned' ? '🔒 Assigned' : '🔴 Closed'}
+          </span>
+
+          {hasAccepted && onOpenChat && (
+            <ChatButton
+              applicationId={job.acceptedApplication._id}
+              unreadCount={unreadCount}
+              onClick={onOpenChat}
+              label="💬 Chat with Worker"
+            />
+          )}
+
+          {hasAccepted && (
+            <button
+              id={`toggle-contact-btn-${job._id}`}
+              style={{
+                padding: '0.45rem 0.85rem',
+                borderRadius: 10,
+                border: '1px solid #cbd5e1',
+                background: showContact ? '#e2e8f0' : '#ffffff',
+                color: '#334155',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+              onClick={() => setShowContact(!showContact)}
+            >
+              {showContact ? 'Hide Contact' : '👤 Contact Info'}
+            </button>
+          )}
+
+          {(job.status === 'open' || job.status === 'assigned') && (
+            <button
+              id={`view-suggestions-btn-${job._id}`}
+              className="btn-suggestions"
+              onClick={() => navigate(`/employer/jobs/${job._id}/suggested`)}
+            >
+              {job.status === 'assigned' ? '🤝 View Assigned Job' : '⚖️ Suggested Workers'}
+            </button>
+          )}
+          {job.status === 'closed' && (
+            <button
+              id={`view-result-btn-${job._id}`}
+              className="btn-view-result"
+              onClick={() => navigate(`/employer/jobs/${job._id}/suggested`)}
+            >
+              🏆 View Result
+            </button>
+          )}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <span className={`job-status-badge ${job.status}`}>
-          {job.status === 'open' ? '🟢 Open' : job.status === 'assigned' ? '🔒 Assigned' : '🔴 Closed'}
-        </span>
-        {(job.status === 'open' || job.status === 'assigned') && (
-          <button
-            id={`view-suggestions-btn-${job._id}`}
-            className="btn-suggestions"
-            onClick={() => navigate(`/employer/jobs/${job._id}/suggested`)}
-          >
-            {job.status === 'assigned' ? '🤝 View Assigned Job' : '⚖️ Suggested Workers'}
-          </button>
-        )}
-        {job.status === 'closed' && (
-          <button
-            id={`view-result-btn-${job._id}`}
-            className="btn-view-result"
-            onClick={() => navigate(`/employer/jobs/${job._id}/suggested`)}
-          >
-            🏆 View Result
-          </button>
-        )}
-      </div>
+
+      {showContact && hasAccepted && (
+        <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed #cbd5e1' }}>
+          <ContactCard applicationId={job.acceptedApplication._id} token={token} />
+        </div>
+      )}
     </div>
   );
 }
