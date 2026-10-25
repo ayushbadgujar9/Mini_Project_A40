@@ -27,8 +27,10 @@ const DEFAULT_LOCATION = {
 export default function WorkerFeed({
   token,
   onJobApplied,
+  onJobsFetched,
   initialLocation = DEFAULT_LOCATION,
   workerSkills = [],
+  appliedJobIds = [],
 }) {
   // ── Top-level state: Shared between NearbyJobFilter and JobMap ──────────────
   const [jobs, setJobs] = useState([]);
@@ -51,8 +53,10 @@ export default function WorkerFeed({
 
   // ── Jobs fetched callback from NearbyJobFilter ──────────────────────────────
   const handleJobsFetched = useCallback((fetchedJobs) => {
-    setJobs(Array.isArray(fetchedJobs) ? fetchedJobs : []);
-  }, []);
+    const arr = Array.isArray(fetchedJobs) ? fetchedJobs : [];
+    setJobs(arr);
+    if (onJobsFetched) onJobsFetched(arr);
+  }, [onJobsFetched]);
 
   return (
     <div className="worker-feed-container" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
@@ -124,6 +128,8 @@ export default function WorkerFeed({
             userLocation={userLocation}
             token={token}
             onApply={onJobApplied}
+            workerSkills={workerSkills}
+            appliedJobIds={appliedJobIds}
             height="400px"
             className="h-[400px] w-full rounded-lg"
           />
@@ -140,6 +146,7 @@ export default function WorkerFeed({
         hideEmbeddedMap={true}
         showJobCards={true}
         workerSkills={workerSkills}
+        appliedJobIds={appliedJobIds}
       />
     </div>
   );

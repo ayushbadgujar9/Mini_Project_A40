@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { checkSkillMatch, resolveJobSkill } from './JobMap';
 
 /**
  * JobCard Component (Clean Emerald / Mint Light Theme)
@@ -33,11 +34,28 @@ export default function JobCard({
   token,
   applicationStatus,
   workerSkills = [],
+  appliedJobIds = null,
 }) {
+  const isAlreadyApplied = Boolean(
+    applicationStatus ||
+    (appliedJobIds && (
+      appliedJobIds instanceof Set
+        ? (appliedJobIds.has(job?._id) || appliedJobIds.has(String(job?._id)))
+        : Array.isArray(appliedJobIds) && appliedJobIds.some((id) => String(id) === String(job?._id))
+    ))
+  );
+
   const [applying, setApplying] = useState(false);
-  const [applied, setApplied] = useState(!!applicationStatus);
-  const [status, setStatus] = useState(applicationStatus || null);
+  const [applied, setApplied] = useState(isAlreadyApplied);
+  const [status, setStatus] = useState(applicationStatus || (isAlreadyApplied ? 'pending' : null));
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (isAlreadyApplied) {
+      setApplied(true);
+      setStatus(applicationStatus || 'pending');
+    }
+  }, [isAlreadyApplied, applicationStatus]);
 
   // Resolve values from direct props or job object
   const displayTitle = title || job?.title || 'Masonry Worker Needed';
@@ -52,34 +70,12 @@ export default function JobCard({
     : (isSkillMatch && fairnessScore >= 70);
 
   // ── Skill-match gate: worker must have the required skill to apply ──
-  const requiredSkill = job?.requiredSkill || null;
-
-  // Aliases: skills that are considered equivalent for matching purposes
-  const SKILL_ALIASES = {
-    plumbing:    ['plumbing', 'plumber'],
-    plumber:     ['plumbing', 'plumber'],
-    electrical:  ['electrical', 'electrician'],
-    electrician: ['electrical', 'electrician'],
-    masonry:     ['masonry', 'masonary'],
-    masonary:    ['masonry', 'masonary'],
-  };
-
-  const hasRequiredSkill = (() => {
-    if (!requiredSkill) return true; // no skill required — anyone can apply
-    if (!workerSkills || workerSkills.length === 0) return false;
-    const reqLower = requiredSkill.toLowerCase();
-    // Get the full set of accepted skill values for this required skill
-    const acceptedSkills = SKILL_ALIASES[reqLower] || [reqLower];
-    return workerSkills.some(
-      (s) => acceptedSkills.includes(s.toLowerCase())
-    );
-  })();
-  const canApply = hasRequiredSkill;
+  const { canApply, requiredSkill } = checkSkillMatch(job, workerSkills);
 
   const handleApply = async () => {
-    // If custom onApply is provided, use that
+    // If custom onApply is provided without token, delegate to parent
     if (onApply && !token) {
-      onApply();
+      onApply(job);
       return;
     }
 
@@ -96,11 +92,12 @@ export default function JobCard({
       if (!res.ok) throw new Error(data.message);
       setApplied(true);
       setStatus('pending');
-      if (onApply) onApply(data.application);
+      if (onApply) onApply(job);
     } catch (err) {
       if (err.message?.includes('already applied')) {
         setApplied(true);
         setStatus('pending');
+        if (onApply) onApply(job);
       } else {
         setError(err.message || 'Failed to apply.');
       }
@@ -258,9 +255,10 @@ export default function JobCard({
       ) : (
         <div style={{
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: '0.4rem',
+          gap: '0.2rem',
           padding: '0.65rem',
           borderRadius: '8px',
           background: 'rgba(239, 68, 68, 0.06)',
@@ -268,8 +266,16 @@ export default function JobCard({
           color: '#b91c1c',
           fontSize: '0.78rem',
           fontWeight: 600,
+          textAlign: 'center',
         }}>
-          🔒 Requires <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{requiredSkill}</span> skill
+          <div>
+            🔒 Requires <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{requiredSkill || displaySkill}</span> skill
+          </div>
+          {workerSkills.length > 0 && (
+            <div style={{ fontSize: '0.7rem', color: '#991b1b', opacity: 0.85 }}>
+              (Your skills: {workerSkills.join(', ')})
+            </div>
+          )}
         </div>
       )}
     </div>

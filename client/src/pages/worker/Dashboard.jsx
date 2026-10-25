@@ -22,7 +22,9 @@ export default function WorkerDashboard() {
   const navigate = useNavigate();
 
   // ── Active tab ──────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState('nearby'); // 'nearby' | 'jobs' | 'applications'
+  const [activeTab, setActiveTab] = useState('nearby'); // 'nearby' | 'jobs' | 'applications' | 'completed'
+  const [appFilter, setAppFilter] = useState('all'); // 'all' | 'pending' | 'accepted' | 'offered' | 'completed'
+  const [nearbyJobsCount, setNearbyJobsCount] = useState(null);
 
   // ── Map view toggle in jobs feed ───────────────────────────────────────────
   const [showJobMap, setShowJobMap] = useState(true);
@@ -102,14 +104,30 @@ export default function WorkerDashboard() {
       const data = await res.json();
       const apps = data.applications || [];
       setApplications(apps);
-      // Build set of already-applied job IDs
-      setAppliedJobIds(new Set(apps.map((a) => a.job?._id).filter(Boolean)));
+      // Build set of already-applied job IDs (both ObjectId and string representations)
+      const ids = new Set();
+      apps.forEach((a) => {
+        if (a.job?._id) {
+          ids.add(a.job._id);
+          ids.add(String(a.job._id));
+        }
+      });
+      setAppliedJobIds(ids);
     } catch {
       setApplications([]);
     } finally {
       setAppsLoading(false);
     }
   }, [token]);
+
+  // Synchronized callback when worker applies from either JobMap or JobCard
+  const handleJobApplied = useCallback((appliedItem) => {
+    const jId = appliedItem?.job?._id || appliedItem?.job || appliedItem?._id;
+    if (jId) {
+      setAppliedJobIds((prev) => new Set([...prev, jId, String(jId)]));
+    }
+    fetchApplications();
+  }, [fetchApplications]);
 
   // Worker accepts or rejects an employer request
   const handleRespondToOffer = async (appId, action) => {
@@ -212,9 +230,26 @@ export default function WorkerDashboard() {
 
   // Helper to get application status for a specific job
   const getAppStatusForJob = (jobId) => {
-    const app = applications.find((a) => a.job?._id === jobId);
+    const app = applications.find((a) => a.job?._id === jobId || String(a.job?._id) === String(jobId));
     return app?.status || null;
   };
+
+  // ── Application categories and counts ──────────────────────────────────────
+  const completedApps = applications.filter((a) => a.status === 'completed');
+  const pendingApps = applications.filter((a) => a.status === 'pending' && a.initiatedBy !== 'employer');
+  const offeredApps = applications.filter((a) => a.status === 'offered' || (a.initiatedBy === 'employer' && a.status === 'pending'));
+  const acceptedApps = applications.filter((a) => a.status === 'accepted');
+  const completedCount = Math.max(completedApps.length, profile?.totalJobsCompleted || 0);
+
+  // Filtered applications based on active appFilter
+  const displayedApplications = applications.filter((app) => {
+    if (appFilter === 'all') return true;
+    if (appFilter === 'completed') return app.status === 'completed';
+    if (appFilter === 'accepted') return app.status === 'accepted';
+    if (appFilter === 'pending') return app.status === 'pending' && app.initiatedBy !== 'employer';
+    if (appFilter === 'offered') return app.status === 'offered' || (app.initiatedBy === 'employer' && app.status === 'pending');
+    return true;
+  });
 
   return (
     <div className="dashboard-page">
@@ -270,17 +305,32 @@ export default function WorkerDashboard() {
 
         {/* Stat cards */}
         <div style={{ marginTop: '2rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <StatCard icon="💼" label="Available Jobs" value={jobsLoading ? '…' : jobs.length} color="var(--clr-worker)" />
-          <StatCard icon="📋" label="My Applications" value={appsLoading ? '…' : applications.length} color="var(--clr-secondary)" />
           <StatCard
-            icon="⭐"
-            label="Profile Score"
-            value={
-              profileLoading ? '…' :
-              profile?.isVerified && profile?.skills?.length > 0 ? '100%' :
-              profile?.isVerified || profile?.skills?.length > 0 ? '60%' : '20%'
-            }
-            color="var(--clr-primary)"
+            icon="💼"
+            label="Available Jobs"
+            value={jobsLoading ? '…' : (activeTab === 'nearby' && nearbyJobsCount !== null ? nearbyJobsCount : filteredJobs.length)}
+            color="var(--clr-worker)"
+            onClick={() => setActiveTab(activeTab === 'nearby' ? 'nearby' : 'jobs')}
+          />
+          <StatCard
+            icon="📋"
+            label="My Applications"
+            value={appsLoading ? '…' : applications.length}
+            color="var(--clr-secondary)"
+            onClick={() => {
+              setAppFilter('all');
+              setActiveTab('applications');
+            }}
+          />
+          <StatCard
+            icon="🏆"
+            label="Jobs Completed"
+            value={appsLoading ? '…' : completedCount}
+            color="#6366f1"
+            onClick={() => {
+              setAppFilter('completed');
+              setActiveTab('completed');
+            }}
           />
         </div>
 
@@ -458,12 +508,12 @@ export default function WorkerDashboard() {
       })()}
 
       {/* ══════════════════════════════════════════════════════════════════
-          TAB SWITCHER — Nearby / Jobs / My Applications
+          TAB SWITCHER — Nearby / Jobs / My Applications / Completed Jobs
       ══════════════════════════════════════════════════════════════════ */}
       <div style={{ maxWidth: 900, margin: '0 auto 1.5rem', padding: '0 1rem' }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1.1fr 1fr 1fr',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
           background: 'var(--clr-bg-mid, #f1f5f9)',
           borderRadius: 'var(--radius-md, 12px)',
           padding: '5px',
@@ -490,7 +540,7 @@ export default function WorkerDashboard() {
               boxShadow: activeTab === 'nearby' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
             }}
           >
-            📍 Nearby Jobs (Radius)
+            📍 Nearby Jobs
           </button>
           <button
             id="tab-jobs-btn"
@@ -516,7 +566,10 @@ export default function WorkerDashboard() {
           </button>
           <button
             id="tab-applications-btn"
-            onClick={() => setActiveTab('applications')}
+            onClick={() => {
+              setAppFilter('all');
+              setActiveTab('applications');
+            }}
             style={{
               padding: '0.7rem 0.8rem',
               border: 'none',
@@ -541,6 +594,36 @@ export default function WorkerDashboard() {
               fontSize: '0.72rem',
             }}>{applications.length}</span>}
           </button>
+          <button
+            id="tab-completed-btn"
+            onClick={() => {
+              setAppFilter('completed');
+              setActiveTab('completed');
+            }}
+            style={{
+              padding: '0.7rem 0.8rem',
+              border: 'none',
+              borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
+              fontWeight: 700,
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.45rem',
+              transition: 'all 250ms',
+              background: activeTab === 'completed' ? 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))' : 'transparent',
+              color: activeTab === 'completed' ? '#fff' : 'var(--clr-text-dim, #64748b)',
+              boxShadow: activeTab === 'completed' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
+            }}
+          >
+            🏆 Completed {completedCount > 0 && <span style={{
+              background: 'rgba(255,255,255,0.25)',
+              borderRadius: '9999px',
+              padding: '0.1rem 0.45rem',
+              fontSize: '0.72rem',
+            }}>{completedCount}</span>}
+          </button>
         </div>
       </div>
 
@@ -551,8 +634,10 @@ export default function WorkerDashboard() {
         <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 1rem' }}>
           <WorkerFeed
             token={token}
-            onJobApplied={() => fetchApplications()}
-            workerSkills={profile?.skills || []}
+            onJobApplied={handleJobApplied}
+            onJobsFetched={(nearbyJobs) => setNearbyJobsCount(nearbyJobs.length)}
+            workerSkills={profile?.skills || user?.skills || []}
+            appliedJobIds={appliedJobIds}
             initialLocation={
               profile?.location?.coordinates && profile.location.coordinates.length >= 2
                 ? { lat: profile.location.coordinates[1], lng: profile.location.coordinates[0], name: profile.city || 'Kolhapur' }
@@ -629,8 +714,9 @@ export default function WorkerDashboard() {
                     : { lat: 16.70, lng: 74.24 }
                 }
                 token={token}
-                onApply={() => fetchApplications()}
-                workerSkills={profile?.skills || []}
+                onApply={handleJobApplied}
+                workerSkills={profile?.skills || user?.skills || []}
+                appliedJobIds={appliedJobIds}
                 height="380px"
                 className="h-[380px] w-full rounded-lg"
               />
@@ -686,11 +772,9 @@ export default function WorkerDashboard() {
                   isSkillMatch={job.isSkillMatch}
                   token={token}
                   applicationStatus={getAppStatusForJob(job._id)}
-                  workerSkills={profile?.skills || []}
-                  onApply={() => {
-                    // Refresh applications after applying
-                    fetchApplications();
-                  }}
+                  workerSkills={profile?.skills || user?.skills || []}
+                  appliedJobIds={appliedJobIds}
+                  onApply={handleJobApplied}
                 />
               ))}
             </div>
@@ -709,7 +793,7 @@ export default function WorkerDashboard() {
               <div>
                 <div className="section-title">My Applications</div>
                 <div className="section-subtitle">
-                  {appsLoading ? 'Loading…' : `${applications.length} application${applications.length !== 1 ? 's' : ''} submitted`}
+                  {appsLoading ? 'Loading…' : `${displayedApplications.length} of ${applications.length} application${applications.length !== 1 ? 's' : ''} shown`}
                 </div>
               </div>
             </div>
@@ -721,6 +805,56 @@ export default function WorkerDashboard() {
             >
               {appsLoading ? '…' : '↻ Refresh'}
             </button>
+          </div>
+
+          {/* Status filter chips inside Applications tab */}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.45rem',
+            padding: '0.5rem 1rem 0.75rem',
+            borderBottom: '1px solid var(--clr-border, #e2e8f0)',
+          }}>
+            {[
+              { id: 'all', label: 'All Applications', count: applications.length },
+              { id: 'pending', label: 'Pending Review', count: pendingApps.length },
+              { id: 'accepted', label: 'Hired & Active', count: acceptedApps.length },
+              { id: 'offered', label: 'Job Requests', count: offeredApps.length },
+              { id: 'completed', label: 'Completed Jobs', count: completedApps.length },
+            ].map((f) => (
+              <button
+                key={f.id}
+                id={`app-filter-${f.id}`}
+                onClick={() => setAppFilter(f.id)}
+                style={{
+                  padding: '0.35rem 0.85rem',
+                  borderRadius: '9999px',
+                  border: '1px solid',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 150ms',
+                  borderColor: appFilter === f.id ? '#10b981' : 'var(--clr-border, #cbd5e1)',
+                  background: appFilter === f.id ? '#ecfdf5' : 'transparent',
+                  color: appFilter === f.id ? '#047857' : 'var(--clr-text-muted, #475569)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                }}
+              >
+                <span>{f.label}</span>
+                <span style={{
+                  padding: '0.05rem 0.4rem',
+                  borderRadius: '9999px',
+                  background: appFilter === f.id ? '#10b981' : 'rgba(100, 116, 139, 0.15)',
+                  color: appFilter === f.id ? '#ffffff' : '#64748b',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                }}>
+                  {f.count}
+                </span>
+              </button>
+            ))}
           </div>
 
           {respondMsg && (
@@ -742,30 +876,53 @@ export default function WorkerDashboard() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem' }}>
               {[1, 2, 3].map((n) => <div key={n} className="shimmer-card" style={{ height: 90 }} />)}
             </div>
-          ) : applications.length === 0 ? (
+          ) : displayedApplications.length === 0 ? (
             <div className="jobs-empty">
-              <div className="jobs-empty-icon">📭</div>
-              <p>No applications or job requests yet. Browse open jobs and apply to get started!</p>
-              <button
-                onClick={() => setActiveTab('jobs')}
-                style={{
-                  marginTop: '1rem',
-                  padding: '0.65rem 1.5rem',
-                  borderRadius: 'var(--radius-md, 12px)',
-                  border: 'none',
-                  background: 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))',
-                  color: '#fff',
-                  fontWeight: 700,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}
-              >
-                🔍 Browse Jobs
-              </button>
+              <div className="jobs-empty-icon">{appFilter === 'completed' ? '🏆' : '📭'}</div>
+              <p>
+                {appFilter === 'all'
+                  ? 'No applications or job requests yet. Browse open jobs and apply to get started!'
+                  : `No applications found with status "${appFilter}".`}
+              </p>
+              {appFilter !== 'all' ? (
+                <button
+                  onClick={() => setAppFilter('all')}
+                  style={{
+                    marginTop: '0.75rem',
+                    padding: '0.5rem 1.25rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    color: '#475569',
+                    fontWeight: 600,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Clear Status Filter
+                </button>
+              ) : (
+                <button
+                  onClick={() => setActiveTab('jobs')}
+                  style={{
+                    marginTop: '1rem',
+                    padding: '0.65rem 1.5rem',
+                    borderRadius: 'var(--radius-md, 12px)',
+                    border: 'none',
+                    background: 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))',
+                    color: '#fff',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🔍 Browse Jobs
+                </button>
+              )}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem 1rem' }}>
-              {applications.map((app) => (
+              {displayedApplications.map((app) => (
                 <ApplicationRow
                   key={app._id}
                   application={app}
@@ -776,6 +933,119 @@ export default function WorkerDashboard() {
                     applicationId: app._id,
                     otherPartyName: app.job?.employerId?.name || 'Employer',
                     isReadOnly: app.status === 'completed',
+                  })}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════
+          TAB: COMPLETED JOBS (VERIFIED WORK HISTORY & CREDITS)
+      ══════════════════════════════════════════════════════════════════ */}
+      {activeTab === 'completed' && (
+        <div className="job-feed-section">
+          <div className="job-feed-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div className="section-icon" style={{ width: 36, height: 36, fontSize: '1rem', background: '#eef2ff', borderColor: '#c7d2fe' }}>🏆</div>
+              <div>
+                <div className="section-title">Completed Jobs & Work History</div>
+                <div className="section-subtitle">
+                  {appsLoading ? 'Loading…' : `${completedCount} job${completedCount !== 1 ? 's' : ''} completed and verified`}
+                </div>
+              </div>
+            </div>
+            <button
+              id="refresh-completed-btn"
+              className="btn-refresh"
+              onClick={() => fetchApplications()}
+              disabled={appsLoading}
+            >
+              {appsLoading ? '…' : '↻ Refresh'}
+            </button>
+          </div>
+
+          {/* Completed Jobs Summary Banner */}
+          <div style={{
+            margin: '0.75rem 1rem',
+            padding: '1rem 1.25rem',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(16, 185, 129, 0.08))',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '1rem',
+          }}>
+            <div>
+              <div style={{ fontWeight: 800, color: '#312e81', fontSize: '0.98rem' }}>
+                🎉 Verified Completed Jobs Record
+              </div>
+              <div style={{ color: '#475569', fontSize: '0.84rem', marginTop: '2px' }}>
+                Each completed job boosts your Fairness Engine ranking and establishes verified trust on the platform.
+              </div>
+            </div>
+            <div style={{
+              display: 'flex',
+              gap: '1.25rem',
+              alignItems: 'center',
+            }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#4f46e5' }}>{completedCount}</div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Total Done</div>
+              </div>
+              <div style={{ width: '1px', height: '32px', background: '#cbd5e1' }} />
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#10b981' }}>100%</div>
+                <div style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Completion Rate</div>
+              </div>
+            </div>
+          </div>
+
+          {/* List of completed jobs */}
+          {appsLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem' }}>
+              {[1, 2].map((n) => <div key={n} className="shimmer-card" style={{ height: 90 }} />)}
+            </div>
+          ) : completedApps.length === 0 ? (
+            <div className="jobs-empty">
+              <div className="jobs-empty-icon">🏆</div>
+              <p style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' }}>No completed jobs recorded yet</p>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: 440, margin: '0 auto' }}>
+                Once an employer hires you and marks the job as complete, it will appear here along with your earnings, verification records, and chat transcripts.
+              </p>
+              <button
+                onClick={() => setActiveTab('jobs')}
+                style={{
+                  marginTop: '1.25rem',
+                  padding: '0.65rem 1.5rem',
+                  borderRadius: 'var(--radius-md, 12px)',
+                  border: 'none',
+                  background: 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))',
+                  color: '#fff',
+                  fontWeight: 700,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                }}
+              >
+                🔍 Explore Available Jobs
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem 1rem' }}>
+              {completedApps.map((app) => (
+                <ApplicationRow
+                  key={app._id}
+                  application={app}
+                  responding={false}
+                  onRespond={() => {}}
+                  unreadCount={unreadCounts[app._id] || 0}
+                  onOpenChat={() => setChatDrawer({
+                    applicationId: app._id,
+                    otherPartyName: app.job?.employerId?.name || 'Employer',
+                    isReadOnly: true,
                   })}
                 />
               ))}
@@ -816,23 +1086,39 @@ export default function WorkerDashboard() {
 // ── ApplicationRow ────────────────────────────────────────────────────────────
 function ApplicationRow({ application, responding, onRespond, unreadCount = 0, onOpenChat }) {
   const job = application.job;
-  const skill = SKILLS.find((s) => s.id === job?.requiredSkill);
+
+  // Resolve skill even when requiredSkill uses an alias (e.g. 'plumber' → Plumbing tile)
+  const SKILL_ALIAS_TO_ID = {
+    plumber:      'plumbing',
+    plumbing:     'plumbing',
+    electrician:  'electrician',
+    electrical:   'electrician',
+    masonry:      'masonry',
+    masonary:     'masonry',
+    construction: 'masonry',
+  };
+  const resolvedSkillId = job?.requiredSkill
+    ? (SKILL_ALIAS_TO_ID[job.requiredSkill.toLowerCase()] || job.requiredSkill.toLowerCase())
+    : null;
+  const skill = resolvedSkillId ? SKILLS.find((s) => s.id === resolvedSkillId) : null;
   const status = application.status;
   const isOffered = status === 'offered' || (application.initiatedBy === 'employer' && status === 'pending');
   const isChatEligible = status === 'accepted' || status === 'completed';
 
   const statusConfig = {
     offered:   { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.45)', color: '#d97706', icon: '📩', label: 'Job Request from Employer' },
-    pending:   { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.30)', color: '#b45309', icon: '⏳', label: 'Pending' },
-    accepted:  { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.45)', color: '#047857', icon: '🔒', label: 'Assigned & Freezed' },
-    rejected:  { bg: 'rgba(239, 68, 68, 0.10)', border: 'rgba(239, 68, 68, 0.30)', color: '#b91c1c', icon: '❌', label: 'Declined' },
-    completed: { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.30)', color: '#4338ca', icon: '🏆', label: 'Completed' },
+    pending:   { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.30)', color: '#b45309', icon: '⏳', label: 'Pending Review' },
+    accepted:  { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.45)', color: '#047857', icon: '✅', label: 'Hired & Assigned' },
+    rejected:  { bg: 'rgba(239, 68, 68, 0.10)', border: 'rgba(239, 68, 68, 0.30)', color: '#b91c1c', icon: '❌', label: 'Not Selected' },
+    completed: { bg: 'rgba(99, 102, 241, 0.10)', border: 'rgba(99, 102, 241, 0.30)', color: '#4338ca', icon: '🏆', label: 'Job Completed' },
   };
   const sc = isOffered ? statusConfig.offered : (statusConfig[status] || statusConfig.pending);
 
-  const appliedDate = new Date(application.appliedAt).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  });
+  // Safe date parse — appliedAt may be null for employer-initiated offers
+  const dateVal = application.appliedAt || application.createdAt || application.updatedAt;
+  const appliedDate = dateVal
+    ? new Date(dateVal).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+    : '—';
 
   return (
     <div style={{
@@ -956,19 +1242,42 @@ function ApplicationRow({ application, responding, onRespond, unreadCount = 0, o
 
 
 // ── StatCard ──────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color }) {
+function StatCard({ icon, label, value, color, onClick }) {
   return (
-    <div style={{
-      padding: '1.25rem 1.75rem',
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      borderRadius: '16px',
-      textAlign: 'center',
-      minWidth: '130px',
-    }}>
+    <div
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && onClick() : undefined}
+      style={{
+        padding: '1.25rem 1.75rem',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '16px',
+        textAlign: 'center',
+        minWidth: '130px',
+        cursor: onClick ? 'pointer' : 'default',
+        transition: 'all 200ms ease',
+        userSelect: 'none',
+      }}
+      onMouseEnter={onClick ? (e) => {
+        e.currentTarget.style.transform = 'translateY(-3px)';
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.22)';
+        e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
+        e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.18)';
+      } : undefined}
+      onMouseLeave={onClick ? (e) => {
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
+        e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+        e.currentTarget.style.boxShadow = 'none';
+      } : undefined}
+    >
       <div style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{icon}</div>
       <div style={{ fontSize: '1.5rem', fontWeight: 800, color, fontFamily: 'var(--font-display)' }}>{value}</div>
-      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '0.25rem' }}>{label}</div>
+      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '0.25rem' }}>
+        {label} {onClick && <span style={{ opacity: 0.6 }}>→</span>}
+      </div>
     </div>
   );
 }

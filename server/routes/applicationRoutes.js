@@ -23,6 +23,60 @@ router.post('/apply/:jobId', isWorker, async (req, res) => {
       return res.status(400).json({ message: 'This job is no longer accepting applications.' });
     }
 
+    // ── Skill Match Validation ──
+    const worker = await User.findById(req.user.id).select('skills').lean();
+    const workerSkills = (worker?.skills || []).map((s) => String(s).toLowerCase().trim());
+
+    const SKILL_ALIASES = {
+      plumbing:     ['plumbing', 'plumber'],
+      plumber:      ['plumbing', 'plumber'],
+      electrical:   ['electrical', 'electrician'],
+      electrician:  ['electrical', 'electrician'],
+      masonry:      ['masonry', 'masonary', 'construction'],
+      masonary:     ['masonry', 'masonary', 'construction'],
+      construction: ['masonry', 'masonary', 'construction'],
+    };
+
+    let reqSkill = null;
+    if (job.requiredSkill) {
+      const s = String(job.requiredSkill).toLowerCase().trim();
+      if (s.includes('plumb')) reqSkill = 'plumbing';
+      else if (s.includes('electr')) reqSkill = 'electrician';
+      else if (s.includes('mason') || s.includes('construct')) reqSkill = 'masonry';
+      else reqSkill = s;
+    } else if (job.category) {
+      const cat = String(job.category).toLowerCase();
+      if (cat.includes('plumb')) reqSkill = 'plumbing';
+      else if (cat.includes('electr')) reqSkill = 'electrician';
+      else if (cat.includes('mason') || cat.includes('construct')) reqSkill = 'masonry';
+    } else if (Array.isArray(job.skillsRequired) && job.skillsRequired.length > 0) {
+      for (const sk of job.skillsRequired) {
+        const s = String(sk).toLowerCase();
+        if (s.includes('plumb')) { reqSkill = 'plumbing'; break; }
+        if (s.includes('electr')) { reqSkill = 'electrician'; break; }
+        if (s.includes('mason') || s.includes('construct')) { reqSkill = 'masonry'; break; }
+      }
+    } else if (job.title) {
+      const t = String(job.title).toLowerCase();
+      if (t.includes('plumb')) reqSkill = 'plumbing';
+      else if (t.includes('electr')) reqSkill = 'electrician';
+      else if (t.includes('mason') || t.includes('construct')) reqSkill = 'masonry';
+    }
+
+    if (reqSkill) {
+      const acceptedSkills = SKILL_ALIASES[reqSkill] || [reqSkill];
+      const hasSkill = workerSkills.some((ws) => {
+        const wsAliases = SKILL_ALIASES[ws] || [ws];
+        return acceptedSkills.some((acc) => wsAliases.includes(acc));
+      });
+
+      if (!hasSkill) {
+        return res.status(403).json({
+          message: `Skill requirement not met: This job requires ${reqSkill} skill.`,
+        });
+      }
+    }
+
     // Create application (compound index enforces uniqueness)
     const application = await Application.create({
       job:      job._id,

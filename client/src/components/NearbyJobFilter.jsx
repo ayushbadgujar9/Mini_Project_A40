@@ -61,6 +61,7 @@ export default function NearbyJobFilter({
   hideEmbeddedMap = false,
   showJobCards = true,
   workerSkills = [],
+  appliedJobIds = null,
 }) {
   // Location state
   const [coords, setCoords] = useState(() => {
@@ -729,8 +730,9 @@ export default function NearbyJobFilter({
                 distance={job.distance != null ? `${job.distance} km away` : `${job.distanceInKm} km away`}
                 token={token}
                 workerSkills={workerSkills}
-                onApply={() => {
-                  if (onJobApplied) onJobApplied(job);
+                appliedJobIds={appliedJobIds}
+                onApply={(appliedJob) => {
+                  if (onJobApplied) onJobApplied(appliedJob || job);
                 }}
               />
             </div>
