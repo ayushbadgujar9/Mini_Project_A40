@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import CertificateUpload from '../../components/CertificateUpload';
 
 // ── Skill catalogue ──────────────────────────────────────────────────────────
 const SKILLS = [
@@ -29,17 +30,10 @@ export default function CompleteProfile() {
   const [yearsOfExperience, setYearsOfExperience] = useState('');
   const [bio,               setBio]               = useState('');
 
-  // ── ID upload & OCR state ──────────────────────────────────────────────────
-  const [idFile,        setIdFile]        = useState(null);
-  const [idPreviewUrl,  setIdPreviewUrl]  = useState(null);
-  const [dragOver,      setDragOver]      = useState(false);
-  const [verifying,     setVerifying]     = useState(false);
-  const [verifyResult,  setVerifyResult]  = useState(null); // { verified, message, ocrText, status }
-  const fileInputRef = useRef(null);
-
-  // ── Step tracker ───────────────────────────────────────────────────────────
-  const [skillsDone, setSkillsDone] = useState(false);
-  const [verifyDone, setVerifyDone] = useState(false);
+  // ── Verification status ────────────────────────────────────────────────────
+  const [verificationStatus, setVerificationStatus] = useState('unverified');
+  const [skillsDone,         setSkillsDone]         = useState(false);
+  const [verifyDone,         setVerifyDone]         = useState(false);
 
   // Load existing profile to pre-fill
   useEffect(() => {
@@ -56,35 +50,18 @@ export default function CompleteProfile() {
         if (data.city) setCity(data.city);
         if (data.phoneNumber) setPhoneNumber(data.phoneNumber);
         if (data.dateOfBirth) setDateOfBirth(data.dateOfBirth.slice(0, 10)); // 'YYYY-MM-DD'
-        if (data.yearsOfExperience !== null && data.yearsOfExperience !== undefined) setYearsOfExperience(String(data.yearsOfExperience));
+        if (data.yearsOfExperience !== null && data.yearsOfExperience !== undefined) {
+          setYearsOfExperience(String(data.yearsOfExperience));
+        }
         if (data.bio) setBio(data.bio);
-        const hasUploadedDoc = Boolean(data.idImagePath || data.ocrExtractedText);
-        if ((data.isVerified || data.verificationStatus === 'verified') && hasUploadedDoc) {
+
+        setVerificationStatus(data.verificationStatus || 'unverified');
+        if (data.isVerified || data.verificationStatus === 'verified') {
           setVerifyDone(true);
-          setVerifyResult({
-            verified: true,
-            status: 'verified',
-            message: 'Your profile is already ID verified!',
-            ocrText: data.ocrExtractedText || null,
-          });
-        } else if (data.verificationStatus === 'pending' && hasUploadedDoc) {
-          setVerifyResult({
-            verified: false,
-            status: 'pending',
-            message: 'Your ID is currently under manual review by the admin team.',
-            ocrText: data.ocrExtractedText || null,
-          });
         }
       })
       .catch(() => {});
   }, [token]);
-
-  // Clean up object URLs
-  useEffect(() => {
-    return () => {
-      if (idPreviewUrl) URL.revokeObjectURL(idPreviewUrl);
-    };
-  }, [idPreviewUrl]);
 
   // ── Skill toggle ───────────────────────────────────────────────────────────
   const toggleSkill = (id) => {
@@ -100,7 +77,6 @@ export default function CompleteProfile() {
       return;
     }
 
-    // ── Client-side field validation ─────────────────────────────────────────
     if (phoneNumber.trim()) {
       const digits = phoneNumber.replace(/[\s\-+]/g, '').replace(/^91/, '');
       if (!/^[6-9]\d{9}$/.test(digits)) {
@@ -118,13 +94,10 @@ export default function CompleteProfile() {
       }
     }
 
-
-
     if (bio.trim().length > 300) {
       setSkillsMsg({ type: 'error', text: '📝 Bio cannot exceed 300 characters.' });
       return;
     }
-    // ────────────────────────────────────────────────────────────────────────
 
     setSkillsSaving(true);
     setSkillsMsg(null);
@@ -133,11 +106,11 @@ export default function CompleteProfile() {
         skills: selectedSkills,
         primarySkill: selectedSkills[0],
       };
-      if (city.trim())             payload.city               = city.trim();
-      if (phoneNumber.trim())       payload.phoneNumber         = phoneNumber.trim();
-      if (dateOfBirth)              payload.dateOfBirth         = dateOfBirth;
-      if (yearsOfExperience !== '') payload.yearsOfExperience   = Number(yearsOfExperience);
-      if (bio.trim())               payload.bio                 = bio.trim();
+      if (city.trim())              payload.city             = city.trim();
+      if (phoneNumber.trim())        payload.phoneNumber       = phoneNumber.trim();
+      if (dateOfBirth)               payload.dateOfBirth       = dateOfBirth;
+      if (yearsOfExperience !== '')  payload.yearsOfExperience = Number(yearsOfExperience);
+      if (bio.trim())                payload.bio               = bio.trim();
 
       const res = await fetch(`${API}/api/worker/profile`, {
         method: 'PUT',
@@ -150,84 +123,13 @@ export default function CompleteProfile() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
 
-      setSkillsMsg({ type: 'success', text: '✅ Profile saved successfully!' });
+      setSkillsMsg({ type: 'success', text: '✅ Profile details saved successfully!' });
       setSkillsDone(true);
-
-      // Redirect after both actions are complete
-      if (verifyDone) {
-        setTimeout(() => navigate('/worker/dashboard'), 1200);
-      }
     } catch (err) {
       setSkillsMsg({ type: 'error', text: err.message });
     } finally {
       setSkillsSaving(false);
     }
-  };
-
-  // ── Handle file selection ──────────────────────────────────────────────────
-  const handleFileChange = (file) => {
-    if (!file) return;
-    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
-      setVerifyResult({ verified: false, message: 'Only JPEG or PNG images are accepted.' });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setVerifyResult({ verified: false, message: 'File must be under 5 MB.' });
-      return;
-    }
-    if (idPreviewUrl) URL.revokeObjectURL(idPreviewUrl);
-    setIdFile(file);
-    setIdPreviewUrl(URL.createObjectURL(file));
-    setVerifyResult(null);
-  };
-
-  // ── Submit ID for OCR Verification ─────────────────────────────────────────
-  const handleVerify = async () => {
-    if (!idFile) {
-      setVerifyResult({ verified: false, message: 'Please select an ID image first.' });
-      return;
-    }
-    setVerifying(true);
-    setVerifyResult(null);
-
-    try {
-      const formData = new FormData();
-      formData.append('idImage', idFile);
-
-      const res = await fetch(`${API}/api/worker/verify`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
-
-      setVerifyResult({
-        verified: data.verified || data.isVerified,
-        status: data.verificationStatus || (data.verified ? 'verified' : 'pending'),
-        message: data.message,
-        ocrText: data.ocrExtractedText || null,
-      });
-
-      setVerifyDone(true);
-
-      // Redirect after both actions are complete
-      if (skillsDone) {
-        setTimeout(() => navigate('/worker/dashboard'), 2000);
-      }
-    } catch (err) {
-      setVerifyResult({ verified: false, message: err.message });
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  // ── Drag & drop handlers ───────────────────────────────────────────────────
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleFileChange(file);
   };
 
   const stepState = (done, active) => {
@@ -251,7 +153,7 @@ export default function CompleteProfile() {
             className="btn-secondary"
             onClick={() => navigate('/worker/dashboard')}
           >
-            Skip for now
+            Go to Dashboard
           </button>
         </header>
 
@@ -259,7 +161,7 @@ export default function CompleteProfile() {
         <div style={{ marginBottom: '1.75rem' }}>
           <h1 className="page-title" style={{ marginBottom: '0.3rem' }}>Complete Your Profile</h1>
           <p className="page-subtitle" style={{ marginBottom: 0 }}>
-            Two quick steps to unlock verified job opportunities and boost your fairness score.
+            Set up your skills and verify your ITI or Vocational Training certificate to earn +20 Fairness Score.
           </p>
         </div>
 
@@ -276,7 +178,7 @@ export default function CompleteProfile() {
             <div className={`step-dot ${stepState(verifyDone, skillsDone)}`}>
               {verifyDone ? '✓' : '2'}
             </div>
-            <span className={`step-label ${stepState(verifyDone, skillsDone)}`}>Verify ID (AI OCR)</span>
+            <span className={`step-label ${stepState(verifyDone, skillsDone)}`}>Verify Skill Certificate</span>
           </div>
         </div>
 
@@ -355,7 +257,7 @@ export default function CompleteProfile() {
             />
           </div>
 
-          {/* ─── NEW PROFILE FIELDS ─── */}
+          {/* ─── PROFILE FIELDS ─── */}
           <div style={{ background: 'var(--clr-bg-mid)', border: '1px solid var(--clr-border)', borderRadius: '14px', padding: '1.1rem 1.25rem', marginBottom: '1.25rem', display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
 
             {/* Phone Number */}
@@ -407,8 +309,6 @@ export default function CompleteProfile() {
                 <option value="11">10+ years</option>
               </select>
             </div>
-
-
           </div>
 
           {/* Short Bio */}
@@ -441,13 +341,13 @@ export default function CompleteProfile() {
             id="save-skills-btn"
             className="btn-primary"
             onClick={handleSaveSkills}
-            disabled={skillsSaving || skillsDone}
+            disabled={skillsSaving}
             style={{ maxWidth: 240 }}
           >
             {skillsSaving ? (
               <><span className="btn-spinner" />Saving…</>
             ) : skillsDone ? (
-              '✓ Skills Saved'
+              '✓ Profile Saved'
             ) : (
               'Save Skills →'
             )}
@@ -455,153 +355,31 @@ export default function CompleteProfile() {
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════
-            SECTION 2 — AI-POWERED ID OCR VERIFICATION
+            SECTION 2 — SKILL / ITI CERTIFICATE VERIFICATION (QR PARSING)
         ══════════════════════════════════════════════════════════════════ */}
         <div className="profile-section">
-          <div className="section-header">
-            <div className="section-icon">🪪</div>
-            <div>
-              <div className="section-title">AI-Powered ID Verification</div>
-              <div className="section-subtitle">
-                Upload a government-issued ID — our OCR AI reads and validates it instantly (+20 Fairness bonus)
-              </div>
-            </div>
-          </div>
+          <CertificateUpload
+            currentStatus={verificationStatus}
+            onVerified={(data) => {
+              setVerificationStatus(data.verificationStatus);
+              if (data.verificationStatus === 'verified') {
+                setVerifyDone(true);
+              }
+            }}
+          />
 
-          {/* Drop zone */}
-          <div
-            className={`upload-zone ${dragOver ? 'drag-over' : ''}`}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-            onClick={() => fileInputRef.current?.click()}
-            role="button"
-            aria-label="Upload ID image"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              id="id-file-input"
-              accept="image/jpeg,image/png,image/jpg"
-              onChange={(e) => handleFileChange(e.target.files?.[0])}
-              style={{ display: 'none' }}
-            />
-            <div className="upload-icon">{idFile ? '📄' : '📂'}</div>
-            <div className="upload-label">
-              {idFile ? idFile.name : 'Click or drag & drop your ID here'}
-            </div>
-            <div className="upload-hint">
-              Aadhaar, Voter ID, Driving Licence, Passport · JPEG / PNG · max 5 MB
-            </div>
-          </div>
-
-          {/* File selected preview */}
-          {idFile && !verifying && (
-            <div className="upload-preview" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
-                {idPreviewUrl ? (
-                  <img
-                    src={idPreviewUrl}
-                    alt="ID preview"
-                    style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                  />
-                ) : (
-                  <span style={{ fontSize: '1.5rem' }}>🖼️</span>
-                )}
-                <div style={{ overflow: 'hidden' }}>
-                  <div className="upload-preview-name">{idFile.name}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                    {(idFile.size / 1024).toFixed(1)} KB · Ready to scan
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                style={{ background: 'none', border: 'none', color: '#f43f5e', fontSize: '1.1rem', cursor: 'pointer', padding: '0.25rem 0.5rem' }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIdFile(null);
-                  if (idPreviewUrl) URL.revokeObjectURL(idPreviewUrl);
-                  setIdPreviewUrl(null);
-                  setVerifyResult(null);
-                }}
-                aria-label="Remove file"
-              >✕</button>
-            </div>
-          )}
-
-          {/* AI OCR loading state */}
-          {verifying && (
-            <div className="ai-loading">
-              <div className="ai-dots">
-                <span /><span /><span />
-              </div>
-              <span className="ai-loading-text">🤖 Tesseract AI is reading and extracting text from your ID…</span>
-            </div>
-          )}
-
-          {/* Verification result */}
-          {verifyResult && (
-            <div
-              className={`alert ${verifyResult.verified ? 'alert-success' : 'alert-warning'}`}
-              style={{ marginBottom: '1rem' }}
-            >
-              <span>{verifyResult.verified ? '✅' : '⏳'}</span>
-              <div>
-                <div style={{ fontWeight: 700 }}>
-                  {verifyResult.verified
-                    ? 'ID Verified Successfully!'
-                    : 'ID Submitted For Review'}
-                </div>
-                <div style={{ fontSize: '0.8rem', marginTop: '0.2rem' }}>
-                  {verifyResult.message}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* OCR Extracted Text Preview (if returned) */}
-          {verifyResult?.ocrText && (
-            <div className="ocr-result-card">
-              <div className="ocr-result-header">
-                <span>🔍 OCR Extracted Document Text:</span>
-                <span style={{ fontSize: '0.7rem', color: '#64748b' }}>AI Recognition Output</span>
-              </div>
-              <div className="ocr-snippet">
-                {verifyResult.ocrText}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1rem' }}>
+          <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
             <button
-              id="verify-id-btn"
+              id="go-dashboard-btn"
               className="btn-primary"
-              onClick={handleVerify}
-              disabled={verifying || (verifyDone && verifyResult?.verified) || !idFile}
-              style={{ maxWidth: 280 }}
+              onClick={() => navigate('/worker/dashboard')}
+              style={{
+                maxWidth: 260,
+                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              }}
             >
-              {verifying ? (
-                <><span className="btn-spinner" />Reading Document…</>
-              ) : verifyDone && verifyResult?.verified ? (
-                '✓ ID Verified'
-              ) : (
-                '🔍 Upload & Verify ID with AI'
-              )}
+              Finish &amp; Go to Dashboard →
             </button>
-
-            {verifyDone && skillsDone && (
-              <button
-                id="go-dashboard-btn"
-                className="btn-primary"
-                onClick={() => navigate('/worker/dashboard')}
-                style={{ maxWidth: 200, background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
-              >
-                Go to Dashboard →
-              </button>
-            )}
           </div>
         </div>
 

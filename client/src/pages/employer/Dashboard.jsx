@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import PostJobForm from '../../components/PostJobForm';
 import ContactCard from '../../components/ContactCard';
 import ChatDrawer, { ChatButton, useChatUnreadCounts } from '../../components/ChatDrawer';
+import StarRatingModal from '../../components/StarRatingModal';
 
 const API = 'http://localhost:5000';
 
@@ -51,6 +52,8 @@ export default function EmployerDashboard() {
   const [chatDrawer, setChatDrawer] = useState(null);
   const unreadCounts = useChatUnreadCounts(token);
 
+  // ── Rating Modal ───────────────────────────────────────────────
+  const [ratingModal, setRatingModal] = useState(null);
 
   return (
     <div className="dashboard-page">
@@ -99,7 +102,6 @@ export default function EmployerDashboard() {
           token={token}
           onJobCreated={(newJob) => {
             setMyJobs((prev) => [newJob, ...prev]);
-            navigate(`/employer/jobs/${newJob._id}/suggested`);
           }}
         />
       </div>
@@ -107,12 +109,14 @@ export default function EmployerDashboard() {
       {/* ══════════════════════════════════════════════════════════════════
           SECTION — MY POSTED JOBS
       ══════════════════════════════════════════════════════════════════ */}
-      <div className="job-form-section" style={{ marginTop: '1.5rem' }}>
+      <div className="posted-jobs-section">
         <div className="section-header">
           <div className="section-icon">📋</div>
           <div>
-            <div className="section-title">My Posted Jobs</div>
-            <div className="section-subtitle">All jobs you have listed on FairConnect</div>
+            <div className="section-title">My Job Postings</div>
+            <div className="section-subtitle">
+              {jobsLoading ? 'Loading…' : `${myJobs.length} job${myJobs.length !== 1 ? 's' : ''} posted`}
+            </div>
           </div>
         </div>
 
@@ -138,11 +142,25 @@ export default function EmployerDashboard() {
                   otherPartyName: job.acceptedApplication.worker?.name || 'Worker',
                   isReadOnly: job.status === 'closed',
                 }) : null}
+                onRateWorker={(workerData) => setRatingModal(workerData)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* ── Star Rating Modal ── */}
+      {ratingModal && (
+        <StarRatingModal
+          isOpen={!!ratingModal}
+          onClose={() => setRatingModal(null)}
+          workerId={ratingModal.workerId}
+          workerName={ratingModal.workerName}
+          jobId={ratingModal.jobId}
+          jobTitle={ratingModal.jobTitle}
+          onSuccess={() => fetchMyJobs()}
+        />
+      )}
 
       {/* ── Chat Drawer ── */}
       {chatDrawer && (
@@ -178,8 +196,8 @@ function StatCard({ icon, label, value, color }) {
   );
 }
 
-// ── EmployerJobRow ───────────────────────────────────────────────────────────────────────────────
-function EmployerJobRow({ job, token, unreadCount = 0, onOpenChat }) {
+// ── EmployerJobRow ────────────────────────────────────────────────────────────
+function EmployerJobRow({ job, token, unreadCount = 0, onOpenChat, onRateWorker }) {
   const navigate = useNavigate();
   const [showContact, setShowContact] = useState(false);
   const skill = SKILLS.find(
@@ -238,6 +256,22 @@ function EmployerJobRow({ job, token, unreadCount = 0, onOpenChat }) {
               onClick={() => setShowContact(!showContact)}
             >
               {showContact ? 'Hide Contact' : '👤 Contact Info'}
+            </button>
+          )}
+
+          {hasAccepted && (
+            <button
+              id={`rate-worker-btn-${job._id}`}
+              className="btn-suggestions"
+              style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: '#fff', border: 'none' }}
+              onClick={() => onRateWorker && onRateWorker({
+                workerId: job.acceptedApplication.worker?._id || job.acceptedApplication.worker,
+                workerName: job.acceptedApplication.worker?.name || 'Worker',
+                jobId: job._id,
+                jobTitle: job.title,
+              })}
+            >
+              ⭐ Rate Worker
             </button>
           )}
 

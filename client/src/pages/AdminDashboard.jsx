@@ -552,7 +552,7 @@ export default function AdminDashboard() {
 
                 <MetricCard
                   icon="⏳"
-                  title="Pending Identity Reviews"
+                  title="Pending Certificate Reviews"
                   value={stats.pendingReviews ?? stats.pendingIdentityReviews ?? verifications.length}
                   subtitle="Awaiting Admin Review (Click to verify)"
                   color="#e11d48"
@@ -575,8 +575,8 @@ export default function AdminDashboard() {
                 <div className="action-tile" onClick={() => setActiveTab('verifications')}>
                   <div className="tile-icon">🪪</div>
                   <div className="tile-body">
-                    <h3>Review Worker Identities ({verifications.length})</h3>
-                    <p>Inspect uploaded ID documents and OCR text extractions to approve or reject profiles.</p>
+                    <h3>Review Worker Certificates ({verifications.length})</h3>
+                    <p>Inspect uploaded certificates and QR/OCR extractions to approve or reject profiles.</p>
                   </div>
                   <span className="tile-arrow">→</span>
                 </div>
@@ -600,8 +600,8 @@ export default function AdminDashboard() {
             <div className="admin-section">
               <div className="section-header-box" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <h2>Worker Identity Verification Queue</h2>
-                  <p>Review uploaded ID documents, inspect AI/OCR extracted text, and verify worker accounts.</p>
+                  <h2>Worker Certificate Verification Queue</h2>
+                  <p>Review uploaded certificates, inspect QR/OCR extracted text, and verify worker accounts.</p>
                 </div>
 
                 <div className="admin-filter-pills">
@@ -638,7 +638,7 @@ export default function AdminDashboard() {
                     <div className="admin-empty-state">
                       <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>🎉</div>
                       <h3>All Catch Up!</h3>
-                      <p>There are no pending identity verifications awaiting admin review right now.</p>
+                      <p>There are no pending certificate verifications awaiting admin review right now.</p>
                     </div>
                   )}
 
@@ -1226,21 +1226,22 @@ function MetricCard({ icon, title, value, subtitle, color, isAlert, onClick }) {
 // Worker Verification Queue Card
 // ─────────────────────────────────────────────────────────────────────────────
 function WorkerVerificationCard({ worker, isVerifiedTab, approving, onApprove, onReject, onViewImage }) {
-  const imageFilename = worker.idImagePath || worker.idDocumentUrl;
+  const imageFilename = worker.certificate?.fileUrl || worker.idImagePath || worker.idDocumentUrl;
+  const isPdf = imageFilename && imageFilename.toLowerCase().endsWith(".pdf");
   const imageUrl = imageFilename
-    ? imageFilename.startsWith('http')
+    ? imageFilename.startsWith("http")
       ? imageFilename
-      : `http://localhost:5000/uploads/${imageFilename.replace(/^\/uploads\//, '')}`
+      : `http://localhost:5000/uploads/${imageFilename.replace(/^\/uploads\//, "")}`
     : null;
 
-  const ocrText = worker.ocrExtractedText || worker.idOcrText;
+  const ocrText = worker.certificate?.qrPayload || worker.ocrExtractedText || worker.idOcrText;
 
   return (
-    <div className={`worker-verification-card ${isVerifiedTab ? 'verified-card' : ''}`}>
+    <div className={`worker-verification-card ${isVerifiedTab ? "verified-card" : ""}`}>
       {/* Top Header */}
       <div className="card-top">
         <div className="worker-avatar-circle">
-          {(worker.name || worker.fullName || 'W').charAt(0).toUpperCase()}
+          {(worker.name || worker.fullName || "W").charAt(0).toUpperCase()}
         </div>
         <div className="worker-details">
           <h4 className="worker-name-heading">
@@ -1248,43 +1249,58 @@ function WorkerVerificationCard({ worker, isVerifiedTab, approving, onApprove, o
             {isVerifiedTab && <span className="verified-badge-icon">✅</span>}
           </h4>
           <div className="worker-sub-info">
-            <span>📱 {worker.phoneNumber || worker.phone || 'N/A'}</span>
+            <span>📱 {worker.phoneNumber || worker.phone || "N/A"}</span>
             <span>•</span>
             <span>🗓 {formatDate(worker.createdAt || worker.signupDate)}</span>
           </div>
         </div>
       </div>
 
-      {/* Side-by-side ID document preview & OCR Text block */}
+      {/* Side-by-side certificate preview & OCR/QR Text block */}
       <div className="verification-side-by-side">
-        {/* Left / Top: ID Document Image */}
+        {/* Left / Top: Certificate Preview Frame */}
         <div className="id-document-frame">
           {imageUrl ? (
-            <div className="image-preview-wrapper" onClick={() => onViewImage(imageUrl)}>
-              <img src={imageUrl} alt="Government ID" className="id-preview-img" />
-              <div className="image-hover-overlay">
-                <span>🔍 Click to View Full Size</span>
+            isPdf ? (
+              <div style={{ padding: "1.25rem", textAlign: "center", background: "#f8fafc", borderRadius: "8px", border: "1px solid #e2e8f0", width: "100%" }}>
+                <div style={{ fontSize: "2.5rem", marginBottom: "0.25rem" }}>📄</div>
+                <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#1e293b", marginBottom: "0.5rem" }}>PDF Certificate</div>
+                <a
+                  href={imageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: "inline-block", padding: "0.4rem 0.8rem", background: "#2563eb", color: "#fff", borderRadius: "6px", fontSize: "0.8rem", textDecoration: "none", fontWeight: 500 }}
+                >
+                  Open PDF Certificate ↗
+                </a>
               </div>
-            </div>
+            ) : (
+              <div className="image-preview-wrapper" onClick={() => onViewImage(imageUrl)}>
+                <img src={imageUrl} alt="Certificate Document" className="id-preview-img" />
+                <div className="image-hover-overlay">
+                  <span>🔍 Click to View Full Size</span>
+                </div>
+              </div>
+            )
           ) : (
             <div className="no-id-placeholder">
               <span>📄</span>
-              <p>No ID Image Uploaded</p>
+              <p>No Certificate Uploaded</p>
             </div>
           )}
         </div>
 
-        {/* Right / Bottom: OCR Text Extraction Summary */}
+        {/* Right / Bottom: QR / OCR Text Extraction Summary */}
         <div className="ocr-summary-box">
           <div className="ocr-box-header">
-            <span>🤖 OCR Text Summary</span>
-            <span className="ocr-tag">{ocrText ? 'Extracted' : 'Pending'}</span>
+            <span>🤖 QR / OCR Data</span>
+            <span className="ocr-tag">{ocrText ? "Extracted" : "Pending"}</span>
           </div>
           <div className="ocr-text-body">
             {ocrText ? (
-              <p className="ocr-content">{ocrText}</p>
+              <p className="ocr-content" style={{ whiteSpace: "pre-wrap" }}>{ocrText}</p>
             ) : (
-              <p className="ocr-empty">No OCR text extracted from this document.</p>
+              <p className="ocr-empty">No QR code or OCR text extracted from this document.</p>
             )}
           </div>
         </div>
@@ -1293,7 +1309,7 @@ function WorkerVerificationCard({ worker, isVerifiedTab, approving, onApprove, o
       {/* Action Footer */}
       {isVerifiedTab ? (
         <div className="card-verified-footer">
-          <span>✅ Identity Verified</span>
+          <span>✅ Certificate Verified</span>
         </div>
       ) : (
         <div className="card-actions-footer">

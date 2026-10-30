@@ -60,12 +60,13 @@ router.get('/verifications', adminMiddleware, async (req, res) => {
     };
 
     const workers = await User.find(filter)
-      .select('name phoneNumber skills primarySkill idImagePath ocrExtractedText verificationStatus rejectionReason isVerified createdAt')
+      .select('name phoneNumber skills primarySkill idImagePath ocrExtractedText verificationStatus rejectionReason isVerified createdAt certificate')
       .sort({ createdAt: -1 })
       .lean();
 
     const formatted = workers.map((w) => {
-      const idDocumentUrl = w.idImagePath ? `/uploads/${w.idImagePath}` : null;
+      const idDocumentUrl = w.certificate?.fileUrl || (w.idImagePath ? `/uploads/${w.idImagePath.replace(/^\/uploads\//, '')}` : null);
+      const idOcrText = w.certificate?.qrPayload || w.ocrExtractedText || 'No QR/OCR text extracted yet.';
       return {
         ...w,
         userId: w._id,
@@ -92,7 +93,7 @@ router.get('/workers/pending', adminMiddleware, async (req, res) => {
       role: 'worker',
       $or: [{ verificationStatus: 'pending' }, { isVerified: false }],
     })
-      .select('name phoneNumber skills primarySkill idImagePath ocrExtractedText verificationStatus rejectionReason createdAt')
+      .select('name phoneNumber skills primarySkill idImagePath ocrExtractedText verificationStatus rejectionReason createdAt certificate')
       .sort({ createdAt: -1 })
       .lean();
 

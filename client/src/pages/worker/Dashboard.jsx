@@ -204,28 +204,34 @@ export default function WorkerDashboard() {
   // ── Compute live fairness estimate ─────────────────────────────────────────
   const fairnessEstimate = (() => {
     if (!profile) return null;
-    let score = 0;
-    let proximity = 0, need = 0, verification = 0, equity = 0;
-    // Proximity — we don't know the job city, so show 0 (explained in card)
-    // Need — days since last worked
-    if (profile.lastWorkedDate) {
-      const daysSince = Math.floor(
-        (Date.now() - new Date(profile.lastWorkedDate).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      need = Math.min(daysSince, 50);
-    } else {
-      need = 50; // never worked
-    }
-    // Verification
-    if (profile.isVerified) { verification = 20; }
-    // Equity penalty
-    const penaltyPer10 = Math.min(Math.floor((profile.totalJobsCompleted || 0) / 10), 10);
-    equity = penaltyPer10;
-    score = Math.max(0, Math.round(proximity + need + verification - equity));
-    return { score, proximity, need, verification, equity,
-      daysSince: profile.lastWorkedDate
-        ? Math.floor((Date.now() - new Date(profile.lastWorkedDate).getTime()) / (1000 * 60 * 60 * 24))
-        : null };
+
+    // 1. Local Residency: 15 points
+    const residency = profile.isLocal ? 15 : 0;
+
+    // 2. Experience & Progression: 10 base + 1 per completed job, strictly capped at 20
+    const completedJobs = Number(
+      profile.stats?.totalCompleted ??
+      profile.totalJobsCompleted ??
+      0
+    );
+    const experience = Math.min(20, 10 + Math.max(0, completedJobs));
+
+    // 3. Customer Feedback: 5-star rating mapped proportionally up to 5 points
+    const avgRating = Number(profile.ratings?.average ?? 0);
+    const feedback = parseFloat(((Math.max(0, Math.min(5, avgRating)) / 5) * 5).toFixed(1));
+
+    // Total score out of 40 max
+    const score = profile.fairnessScore ?? parseFloat((residency + experience + feedback).toFixed(1));
+
+    return {
+      score,
+      residency,
+      experience,
+      feedback,
+      completedJobs,
+      averageRating: avgRating,
+      isLocal: Boolean(profile.isLocal),
+    };
   })();
 
   // Helper to get application status for a specific job
@@ -344,7 +350,7 @@ export default function WorkerDashboard() {
           >
             <div className="prompt-card-text" style={{ textAlign: 'left' }}>
               <h3>🚀 Complete Your Profile</h3>
-              <p>Add your skills and upload your government ID for AI OCR verification to unlock job opportunities and boost your fairness score.</p>
+              <p>Add your skills and upload your ITI or vocational training certificate to unlock job opportunities and boost your profile credibility.</p>
             </div>
             <span className="prompt-card-arrow">→</span>
           </button>
@@ -364,93 +370,74 @@ export default function WorkerDashboard() {
             </div>
             <div className="fpc-score-bubble"
               style={{
-                background: fairnessEstimate.score >= 60
+                background: fairnessEstimate.score >= 30
                   ? 'linear-gradient(135deg,#34d399,#059669)'
-                  : fairnessEstimate.score >= 35
+                  : fairnessEstimate.score >= 20
                   ? 'linear-gradient(135deg,#f59e0b,#d97706)'
                   : 'linear-gradient(135deg,#6366f1,#4f46e5)',
               }}
             >
               <div className="fpc-score-num">{fairnessEstimate.score}</div>
-              <div className="fpc-score-label">/ 70 pts*</div>
+              <div className="fpc-score-label">/ 40 pts max</div>
             </div>
           </div>
 
           <div className="fpc-breakdown">
-            {/* Proximity */}
+            {/* Local Residency */}
             <div className="fpc-row">
               <div className="fpc-row-left">
                 <span className="fpc-row-icon">📍</span>
                 <div>
-                  <div className="fpc-row-name">Proximity</div>
+                  <div className="fpc-row-name">Local Residency Status</div>
                   <div className="fpc-row-desc">
-                    {profile.city
-                      ? `City set: "${profile.city}" — +30 pts when job is in your city`
-                      : 'No city set — set your city in profile for up to +30 pts'}
+                    {fairnessEstimate.isLocal
+                      ? 'Local resident status verified (+15 pts)'
+                      : 'Non-local status (0 pts) — earn +15 pts for verified local residency'}
                   </div>
                 </div>
               </div>
-              <span className="fpc-badge" style={{ background: profile.city ? 'rgba(99,102,241,0.2)' : 'rgba(100,116,139,0.2)', color: profile.city ? '#a5b4fc' : '#94a3b8' }}>
-                {profile.city ? 'Up to +30' : '0 pts'}
+              <span className="fpc-badge" style={{ background: fairnessEstimate.isLocal ? 'rgba(52,211,153,0.15)' : 'rgba(100,116,139,0.2)', color: fairnessEstimate.isLocal ? '#34d399' : '#94a3b8' }}>
+                +{fairnessEstimate.residency} pts
               </span>
             </div>
 
-            {/* Need */}
+            {/* Experience & Progression */}
             <div className="fpc-row">
               <div className="fpc-row-left">
-                <span className="fpc-row-icon">⏳</span>
+                <span className="fpc-row-icon">🔨</span>
                 <div>
-                  <div className="fpc-row-name">Time Since Last Job</div>
+                  <div className="fpc-row-name">Experience &amp; Progression</div>
                   <div className="fpc-row-desc">
-                    {fairnessEstimate.daysSince === null
-                      ? 'No jobs completed yet — you get the maximum need score'
-                      : `${fairnessEstimate.daysSince} day${fairnessEstimate.daysSince !== 1 ? 's' : ''} idle — each day idle = +1 pt (max 50)`}
+                    10 base pts for new workers + 1 pt per completed job ({fairnessEstimate.completedJobs} completed) · Capped at 20 pts max
                   </div>
                 </div>
               </div>
               <span className="fpc-badge" style={{ background: 'rgba(34,211,238,0.15)', color: '#22d3ee' }}>
-                +{fairnessEstimate.need} pts
+                +{fairnessEstimate.experience} pts
               </span>
             </div>
 
-            {/* Verification */}
+            {/* Customer Feedback */}
             <div className="fpc-row">
               <div className="fpc-row-left">
-                <span className="fpc-row-icon">{profile.isVerified ? '✅' : '🔴'}</span>
+                <span className="fpc-row-icon">⭐</span>
                 <div>
-                  <div className="fpc-row-name">ID Verification</div>
+                  <div className="fpc-row-name">Customer Feedback Rating</div>
                   <div className="fpc-row-desc">
-                    {profile.isVerified
-                      ? 'Verified — you earn the full +20 pts bonus'
-                      : 'Not verified — upload your ID to earn +20 pts'}
-                  </div>
-                </div>
-              </div>
-              <span className="fpc-badge" style={{ background: profile.isVerified ? 'rgba(52,211,153,0.15)' : 'rgba(244,63,94,0.15)', color: profile.isVerified ? '#34d399' : '#f43f5e' }}>
-                {profile.isVerified ? '+20 pts' : '0 pts'}
-              </span>
-            </div>
-
-            {/* Equity */}
-            <div className="fpc-row">
-              <div className="fpc-row-left">
-                <span className="fpc-row-icon">🏆</span>
-                <div>
-                  <div className="fpc-row-name">Equity Adjustment</div>
-                  <div className="fpc-row-desc">
-                    {profile.totalJobsCompleted || 0} jobs completed · −1 pt per 10 jobs (max −10) to help newcomers
+                    {fairnessEstimate.averageRating > 0
+                      ? `Average rating: ${fairnessEstimate.averageRating}★ — mapped proportionally up to 5 pts`
+                      : 'No employer ratings yet — up to +5 pts available from 5-star reviews'}
                   </div>
                 </div>
               </div>
               <span className="fpc-badge" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
-                {fairnessEstimate.equity > 0 ? `−${fairnessEstimate.equity} pts` : '0 pts'}
+                +{fairnessEstimate.feedback} pts
               </span>
             </div>
           </div>
 
           <div className="fpc-footer">
-            * Score shown excludes proximity (+30) since it depends on each job&apos;s city.
-            Your total can reach up to 100 pts for local jobs.
+            * Fairness score is dynamically computed from Local Residency (15 pts), Experience Progression (20 pts max), and Customer Feedback (5 pts max).
           </div>
         </div>
       )}

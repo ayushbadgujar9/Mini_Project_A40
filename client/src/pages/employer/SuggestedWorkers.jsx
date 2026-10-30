@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import ChatDrawer, { ChatButton, useChatUnreadCounts } from '../../components/ChatDrawer';
+import StarRatingModal from '../../components/StarRatingModal';
 
 
 const API = 'http://localhost:5000';
@@ -35,6 +36,7 @@ export default function SuggestedWorkers() {
 
   // Chat drawer
   const [chatDrawer, setChatDrawer] = useState(null);
+  const [ratingModalData, setRatingModalData] = useState(null);
   const unreadCounts = useChatUnreadCounts(token);
 
 
@@ -120,7 +122,7 @@ export default function SuggestedWorkers() {
       if (!res.ok) throw new Error(d.message);
       setFeedbackMsg({ type: 'success', text: `✅ ${d.message}` });
       await fetchMatches();
-      setTimeout(() => navigate('/employer/dashboard'), 2500);
+      setRatingModalData({ workerId, workerName, jobId, jobTitle: data?.job?.title });
     } catch (err) {
       setFeedbackMsg({ type: 'error', text: err.message || 'Failed to complete job.' });
     } finally {
@@ -376,6 +378,19 @@ export default function SuggestedWorkers() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Star Rating Modal ── */}
+      {ratingModalData && (
+        <StarRatingModal
+          isOpen={!!ratingModalData}
+          onClose={() => setRatingModalData(null)}
+          workerId={ratingModalData.workerId}
+          workerName={ratingModalData.workerName}
+          jobId={ratingModalData.jobId}
+          jobTitle={ratingModalData.jobTitle}
+          onSuccess={() => fetchMatches()}
+        />
       )}
 
       {/* ── Chat Drawer ── */}

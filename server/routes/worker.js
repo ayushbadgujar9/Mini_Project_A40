@@ -6,6 +6,7 @@ const Tesseract = require('tesseract.js');
 
 const { isWorker, verifyToken } = require('../middleware/auth');
 const User = require('../models/User');
+const { calculateFairnessScore } = require('../utils/fairnessScore');
 
 const router = express.Router();
 
@@ -250,7 +251,7 @@ router.put('/profile', isWorker, async (req, res) => {
 router.get('/profile', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select('name email skills primarySkill isVerified isEmailVerified verificationStatus role city phoneNumber dateOfBirth yearsOfExperience expectedDailyWage bio lastWorkedDate totalJobsCompleted idImagePath ocrExtractedText');
+      .select('name email skills primarySkill isVerified isEmailVerified verificationStatus role city phoneNumber dateOfBirth yearsOfExperience expectedDailyWage bio lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore idImagePath ocrExtractedText');
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     // Guard: If worker has never uploaded an ID image or had OCR text extracted,
@@ -280,6 +281,11 @@ router.get('/profile', verifyToken, async (req, res) => {
       totalJobsCompleted: user.totalJobsCompleted,
       idImagePath:        user.idImagePath || null,
       ocrExtractedText:   user.ocrExtractedText || null,
+      isLocal:            Boolean(user.isLocal),
+      stats:              user.stats || { totalCompleted: user.totalJobsCompleted || 0 },
+      ratings:            user.ratings || { average: 0, count: 0 },
+      fairnessScore:      user.fairnessScore ?? calculateFairnessScore(user).totalScore,
+      fairnessBreakdown:  calculateFairnessScore(user),
     });
   } catch (err) {
     return res.status(500).json({ message: 'Failed to fetch profile.', error: err.message });

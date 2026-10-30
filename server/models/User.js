@@ -189,6 +189,56 @@ const userSchema = new mongoose.Schema(
       min: 0,
     },
 
+    // ── Local Residency & Worker Fairness Stats ──────────────────────────────
+    isLocal: {
+      type: Boolean,
+      default: false,
+    },
+
+    stats: {
+      totalCompleted: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+    },
+
+    ratings: {
+      average: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5,
+      },
+      count: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+      scores: {
+        type: [Number],
+        default: [],
+      },
+      feedbacks: {
+        type: [
+          {
+            jobId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Job' },
+            employerId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            rating:       { type: Number, min: 1, max: 5 },
+            feedback:     { type: String, trim: true, maxlength: 500 },
+            employerName: { type: String, trim: true },
+            ratedAt:      { type: Date, default: Date.now },
+          },
+        ],
+        default: [],
+      },
+    },
+
+    fairnessScore: {
+      type: Number,
+      default: 10, // Base starting score for new worker (10 experience base)
+    },
+
     idImagePath: {
       type: String,
       default: null,
@@ -197,6 +247,14 @@ const userSchema = new mongoose.Schema(
     idCardUrl: {
       type: String,
       default: null,
+    },
+
+    // ── Certificate Verification ──────────────────────────────────────────────
+    certificate: {
+      fileUrl:    { type: String, default: null },
+      fileType:   { type: String, enum: ['image', 'pdf'], default: null },
+      qrPayload:  { type: String, default: null },
+      verifiedAt: { type: Date,   default: null },
     },
 
     // ── Employer Aggregate Rating ────────────────────────────────────────────

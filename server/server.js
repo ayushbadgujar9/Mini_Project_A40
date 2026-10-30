@@ -12,6 +12,8 @@ const adminRoutes = require('./routes/admin');
 const jobRoutes = require('./routes/jobs');
 const applicationRoutes = require('./routes/applicationRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const verificationRoutes = require('./routes/verificationRoutes');
+const ratingRoutes = require('./routes/ratingRoutes');
 
 
 const app = express();
@@ -31,6 +33,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/applications', applicationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/verification', verificationRoutes);
+app.use('/api/ratings', ratingRoutes);
 
 
 // Serve uploaded ID images statically (for dev; use CDN/S3 in production)
