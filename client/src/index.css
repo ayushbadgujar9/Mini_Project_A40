@@ -2693,6 +2693,18 @@ a {
   color: #047857;
 }
 
+.sw-pill.experience {
+  background: rgba(34, 211, 238, 0.08);
+  border-color: rgba(34, 211, 238, 0.25);
+  color: #0891b2;
+}
+
+.sw-pill.feedback {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+  color: #b45309;
+}
+
 /* Hire button */
 .sw-hire-btn {
   margin-top: 0.75rem;

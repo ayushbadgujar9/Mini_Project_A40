@@ -153,7 +153,7 @@ export default function StarRatingModal({
                 <span className="text-base font-extrabold text-emerald-600">
                   {successResult.fairnessScore} pts
                 </span>
-                <span className="text-xs text-gray-400">/ 40 max</span>
+                <span className="text-xs text-gray-400">/ 50 max</span>
               </div>
             </div>
 
@@ -173,11 +173,19 @@ export default function StarRatingModal({
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>⭐ Feedback Rating (5-star window):</span>
+                  <span>⭐ Feedback Rating:</span>
                   <span className="font-semibold text-emerald-700">
                     +{successResult.breakdown.feedbackScore} pts
                   </span>
                 </div>
+                {successResult.breakdown.verificationScore !== undefined && (
+                  <div className="flex justify-between">
+                    <span>🪪 ID Verification:</span>
+                    <span className="font-semibold text-gray-800">
+                      +{successResult.breakdown.verificationScore} pts
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 

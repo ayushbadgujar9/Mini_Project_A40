@@ -4,6 +4,7 @@ const { isEmployer, verifyToken, isWorker } = require('../middleware/auth');
 const Job  = require('../models/Job');
 const User = require('../models/User');
 const Application = require('../models/Application');
+const { calculateFairnessScore } = require('../utils/fairnessScore');
 
 const router = express.Router();
 
@@ -26,54 +27,11 @@ const SKILL_IDS = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fairness Scoring Algorithm
-//
-// Scores a worker against a job. Higher score = better/fairer match.
-//
-// Components (max 100 pts):
-//   Proximity  — same city as job           → +30 pts
-//   Need       — days since lastWorkedDate  → up to +50 pts (capped at 50 days)
-//   Verified   — isVerified === true        → +20 pts
-//   Equity adj — penalise high completions  → −0 to −10 pts (fairness to newcomers)
-//
-// New-worker bonus: 25 pts (mid-range) — avoids dominating experienced workers.
+// Fairness Scoring Algorithm (Delegates to centralized calculateFairnessScore)
 // ─────────────────────────────────────────────────────────────────────────────
 function calcFairnessScore(worker, job) {
-  let score = 0;
-
-  // ── Proximity (30 pts) ─────────────────────────────────────────────────────
-  if (
-    job.city &&
-    worker.city &&
-    job.city.trim().toLowerCase() === worker.city.trim().toLowerCase()
-  ) {
-    score += 30;
-  }
-
-  // ── Need (0–50 pts) ────────────────────────────────────────────────────────
-  // Workers who haven't worked recently get priority.
-  if (worker.lastWorkedDate) {
-    const daysSince = Math.floor(
-      (Date.now() - new Date(worker.lastWorkedDate).getTime()) / (1000 * 60 * 60 * 24)
-    );
-    // Every day idle = +1 pt, capped at 50
-    score += Math.min(daysSince, 50);
-  } else {
-    // Never worked → mid-range need score (25 pts) so new workers get a fair
-    // boost without overshadowing experienced workers idle for 25+ days.
-    score += 25;
-  }
-
-  // ── Verification bonus (20 pts) ────────────────────────────────────────────
-  if (worker.isVerified) score += 20;
-
-  // ── Equity adjustment (−0 to −10 pts) ────────────────────────────────────
-  // Workers with many completed jobs get a small penalty so newcomers aren't
-  // perpetually locked out of work.
-  const penaltyPer10Jobs = Math.min(Math.floor((worker.totalJobsCompleted || 0) / 10), 10);
-  score -= penaltyPer10Jobs;
-
-  return Math.min(100, Math.max(0, Math.round(score)));
+  const breakdown = calculateFairnessScore(worker, job);
+  return breakdown.totalScore;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -527,7 +485,7 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
         { _id: { $in: appliedWorkerIds } },
       ],
     })
-      .select('name skills primarySkill isVerified city lastWorkedDate totalJobsCompleted')
+      .select('name skills primarySkill isVerified city lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore')
       .lean();
 
     // Score & enrich workers
@@ -535,6 +493,7 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
       const appInfo = appliedMap.get(w._id.toString());
       const isOfferPending = job.offerPendingWorkerId?.toString() === w._id.toString() || appInfo?.status === 'offered';
       const isAssigned = job.assignedWorkerId?.toString() === w._id.toString() || job.hiredWorkerId?.toString() === w._id.toString() || appInfo?.status === 'accepted';
+      const breakdown = calculateFairnessScore(w, job);
       return {
         ...w,
         hasApplied: !!appInfo,
@@ -543,7 +502,8 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
         appliedAt: appInfo?.appliedAt || null,
         isOfferPending,
         isAssigned,
-        fairnessScore: calcFairnessScore(w, job),
+        fairnessScore: breakdown.totalScore,
+        fairnessBreakdown: breakdown,
       };
     });
 
@@ -576,7 +536,7 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
 router.get('/my-scores', isWorker, async (req, res) => {
   try {
     const worker = await User.findById(req.user.id)
-      .select('skills primarySkill isVerified city lastWorkedDate totalJobsCompleted')
+      .select('skills primarySkill isVerified city lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore')
       .lean();
 
     if (!worker) return res.status(404).json({ message: 'Worker not found.' });
@@ -595,8 +555,9 @@ router.get('/my-scores', isWorker, async (req, res) => {
         if ((s === 'plumbing' || s === 'plumber') && (job.requiredSkill === 'plumbing' || job.requiredSkill === 'plumber')) return true;
         return false;
       });
-      const fairnessScore = isSkillMatch ? calcFairnessScore(worker, job) : 0;
-      return { ...job, fairnessScore, isSkillMatch };
+      const breakdown = calculateFairnessScore(worker, job);
+      const fairnessScore = isSkillMatch ? breakdown.totalScore : 0;
+      return { ...job, fairnessScore, fairnessBreakdown: isSkillMatch ? breakdown : null, isSkillMatch };
     });
 
     return res.status(200).json({ jobs: scored });

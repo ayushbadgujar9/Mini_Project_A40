@@ -284,7 +284,7 @@ router.get('/profile', verifyToken, async (req, res) => {
       isLocal:            Boolean(user.isLocal),
       stats:              user.stats || { totalCompleted: user.totalJobsCompleted || 0 },
       ratings:            user.ratings || { average: 0, count: 0 },
-      fairnessScore:      user.fairnessScore ?? calculateFairnessScore(user).totalScore,
+      fairnessScore:      calculateFairnessScore(user).totalScore,
       fairnessBreakdown:  calculateFairnessScore(user),
     });
   } catch (err) {

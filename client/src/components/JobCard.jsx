@@ -67,7 +67,7 @@ export default function JobCard({
   const displaySkill = skill || job?.requiredSkill || 'Masonry';
   const displayFairMatch = isFairMatch !== undefined 
     ? isFairMatch 
-    : (isSkillMatch && fairnessScore >= 70);
+    : (isSkillMatch && (fairnessScore >= 30 || fairnessScore >= 70));
 
   // ── Skill-match gate: worker must have the required skill to apply ──
   const { canApply, requiredSkill } = checkSkillMatch(job, workerSkills);

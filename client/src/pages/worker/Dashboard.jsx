@@ -220,17 +220,23 @@ export default function WorkerDashboard() {
     const avgRating = Number(profile.ratings?.average ?? 0);
     const feedback = parseFloat(((Math.max(0, Math.min(5, avgRating)) / 5) * 5).toFixed(1));
 
-    // Total score out of 40 max
-    const score = profile.fairnessScore ?? parseFloat((residency + experience + feedback).toFixed(1));
+    // 4. ID Verification: 10 points
+    const isVerified = Boolean(profile.isVerified || profile.verificationStatus === 'verified');
+    const verification = isVerified ? 10 : 0;
+
+    // Total score out of 50 max
+    const score = profile.fairnessScore ?? parseFloat((residency + experience + feedback + verification).toFixed(1));
 
     return {
       score,
       residency,
       experience,
       feedback,
+      verification,
       completedJobs,
       averageRating: avgRating,
       isLocal: Boolean(profile.isLocal),
+      isVerified,
     };
   })();
 
@@ -370,15 +376,15 @@ export default function WorkerDashboard() {
             </div>
             <div className="fpc-score-bubble"
               style={{
-                background: fairnessEstimate.score >= 30
+                background: fairnessEstimate.score >= 35
                   ? 'linear-gradient(135deg,#34d399,#059669)'
-                  : fairnessEstimate.score >= 20
+                  : fairnessEstimate.score >= 25
                   ? 'linear-gradient(135deg,#f59e0b,#d97706)'
                   : 'linear-gradient(135deg,#6366f1,#4f46e5)',
               }}
             >
               <div className="fpc-score-num">{fairnessEstimate.score}</div>
-              <div className="fpc-score-label">/ 40 pts max</div>
+              <div className="fpc-score-label">/ 50 pts max</div>
             </div>
           </div>
 
@@ -434,10 +440,28 @@ export default function WorkerDashboard() {
                 +{fairnessEstimate.feedback} pts
               </span>
             </div>
+
+            {/* Government ID Verification */}
+            <div className="fpc-row">
+              <div className="fpc-row-left">
+                <span className="fpc-row-icon">🪪</span>
+                <div>
+                  <div className="fpc-row-name">Government ID Verification</div>
+                  <div className="fpc-row-desc">
+                    {fairnessEstimate.isVerified
+                      ? 'Government ID verified (+10 pts)'
+                      : 'Unverified ID (0 pts) — complete ID verification to earn +10 pts'}
+                  </div>
+                </div>
+              </div>
+              <span className="fpc-badge" style={{ background: fairnessEstimate.isVerified ? 'rgba(52,211,153,0.15)' : 'rgba(100,116,139,0.2)', color: fairnessEstimate.isVerified ? '#34d399' : '#94a3b8' }}>
+                +{fairnessEstimate.verification} pts
+              </span>
+            </div>
           </div>
 
           <div className="fpc-footer">
-            * Fairness score is dynamically computed from Local Residency (15 pts), Experience Progression (20 pts max), and Customer Feedback (5 pts max).
+            * Fairness score is dynamically computed from Local Residency (15 pts), Experience Progression (20 pts max), Customer Feedback (5 pts max), and ID Verification (10 pts).
           </div>
         </div>
       )}

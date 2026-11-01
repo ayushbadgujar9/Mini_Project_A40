@@ -13,10 +13,10 @@ const SKILLS = [
   { id: 'masonry',     label: 'Masonry',     icon: '🧱' },
 ];
 
-// Score breakdown colours
+// Score breakdown colours (scaled for 50-pt max)
 const scoreColor = (score) => {
-  if (score >= 80) return '#34d399'; // emerald
-  if (score >= 50) return '#f59e0b'; // amber
+  if (score >= 35) return '#34d399'; // emerald (high match)
+  if (score >= 25) return '#f59e0b'; // amber (medium match)
   return '#94a3b8';                  // slate
 };
 
@@ -360,6 +360,7 @@ export default function SuggestedWorkers() {
                 key={worker._id}
                 worker={worker}
                 rank={idx + 1}
+                jobCity={data?.job?.city}
                 jobStatus={jobStatus}
                 pendingWorkerId={pendingWorkerId}
                 assignedWorkerId={assignedWorkerId}
@@ -413,6 +414,7 @@ export default function SuggestedWorkers() {
 function WorkerCard({
   worker,
   rank,
+  jobCity,
   jobStatus,
   pendingWorkerId,
   assignedWorkerId,
@@ -423,13 +425,16 @@ function WorkerCard({
   unreadCount = 0,
   onOpenChat,
 }) {
-  const MAX_SCORE = 100;
-  const pct = Math.min((worker.fairnessScore / MAX_SCORE) * 100, 100);
-  const color = scoreColor(worker.fairnessScore);
+  const MAX_SCORE = 50;
+  const pct = Math.min(((worker.fairnessScore || 0) / MAX_SCORE) * 100, 100);
+  const color = scoreColor(worker.fairnessScore || 0);
 
-  const daysSince = worker.lastWorkedDate
-    ? Math.floor((Date.now() - new Date(worker.lastWorkedDate)) / (1000 * 60 * 60 * 24))
-    : null;
+  const breakdown = worker.fairnessBreakdown || {
+    residencyScore: worker.isLocal || (jobCity && worker.city && jobCity.trim().toLowerCase() === worker.city.trim().toLowerCase()) ? 15 : 0,
+    experienceScore: Math.min(20, 10 + (worker.totalJobsCompleted || 0)),
+    feedbackScore: worker.ratings?.average ? parseFloat(((worker.ratings.average / 5) * 5).toFixed(1)) : 0,
+    verificationScore: (worker.isVerified || worker.verificationStatus === 'verified') ? 10 : 0,
+  };
 
   const isPendingWithThisWorker = worker.isOfferPending || pendingWorkerId?.toString() === worker._id?.toString();
   const isAssignedToThisWorker = worker.isAssigned || assignedWorkerId?.toString() === worker._id?.toString();
@@ -497,7 +502,7 @@ function WorkerCard({
       {/* Score bar */}
       <div className="sw-score-row">
         <span className="sw-score-label">Fairness Score</span>
-        <span className="sw-score-value" style={{ color }}>{worker.fairnessScore}/100</span>
+        <span className="sw-score-value" style={{ color }}>{worker.fairnessScore}/50</span>
       </div>
       <div className="sw-score-bar-bg">
         <div
@@ -508,18 +513,28 @@ function WorkerCard({
 
       {/* Score breakdown pills */}
       <div className="sw-breakdown">
-        {worker.isVerified && (
-          <span className="sw-pill verified">✓ Verified +20</span>
+        {breakdown.residencyScore > 0 ? (
+          <span className="sw-pill proximity">📍 Local +{breakdown.residencyScore}</span>
+        ) : (
+          <span className="sw-pill need">📍 Non-local (+0)</span>
         )}
-        {worker.city && (
-          <span className="sw-pill proximity">📍 Local +30</span>
+        <span className="sw-pill experience">
+          🔨 Exp +{breakdown.experienceScore}
+        </span>
+        {breakdown.feedbackScore > 0 ? (
+          <span className="sw-pill feedback">
+            ⭐ Rating +{breakdown.feedbackScore}
+          </span>
+        ) : (
+          <span className="sw-pill need">
+            ⭐ 0 rating pts
+          </span>
         )}
-        <span className="sw-pill need">
-          ⏳ {daysSince === null ? 'New worker' : daysSince === 0 ? 'Worked today' : `Idle ${daysSince}d`}
-        </span>
-        <span className="sw-pill jobs">
-          🏆 {worker.totalJobsCompleted} jobs
-        </span>
+        {breakdown.verificationScore > 0 ? (
+          <span className="sw-pill verified">✓ Verified +{breakdown.verificationScore}</span>
+        ) : (
+          <span className="sw-pill need">⏳ Unverified</span>
+        )}
       </div>
 
       {/* Skills */}

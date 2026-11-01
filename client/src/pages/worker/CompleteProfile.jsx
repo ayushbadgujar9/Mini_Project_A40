@@ -161,7 +161,7 @@ export default function CompleteProfile() {
         <div style={{ marginBottom: '1.75rem' }}>
           <h1 className="page-title" style={{ marginBottom: '0.3rem' }}>Complete Your Profile</h1>
           <p className="page-subtitle" style={{ marginBottom: 0 }}>
-            Set up your skills and verify your ITI or Vocational Training certificate to earn +20 Fairness Score.
+            Set up your skills and verify your Government ID to earn +10 Fairness Score.
           </p>
         </div>
 
