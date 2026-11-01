@@ -485,7 +485,7 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
         { _id: { $in: appliedWorkerIds } },
       ],
     })
-      .select('name skills primarySkill isVerified city lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore')
+      .select('name skills primarySkill isVerified verificationStatus certificate city lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore')
       .lean();
 
     // Score & enrich workers
@@ -493,9 +493,12 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
       const appInfo = appliedMap.get(w._id.toString());
       const isOfferPending = job.offerPendingWorkerId?.toString() === w._id.toString() || appInfo?.status === 'offered';
       const isAssigned = job.assignedWorkerId?.toString() === w._id.toString() || job.hiredWorkerId?.toString() === w._id.toString() || appInfo?.status === 'accepted';
-      const breakdown = calculateFairnessScore(w, job);
+      const isVerified = Boolean(w.isVerified || w.verificationStatus === 'verified' || w.certificate?.verifiedAt);
+      const workerForScoring = { ...w, isVerified };
+      const breakdown = calculateFairnessScore(workerForScoring, job);
       return {
         ...w,
+        isVerified,
         hasApplied: !!appInfo,
         applicationId: appInfo?.applicationId || null,
         applicationStatus: appInfo?.status || null,
@@ -536,7 +539,7 @@ router.get('/matches/:jobId', isEmployer, async (req, res) => {
 router.get('/my-scores', isWorker, async (req, res) => {
   try {
     const worker = await User.findById(req.user.id)
-      .select('skills primarySkill isVerified city lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore')
+      .select('skills primarySkill isVerified verificationStatus certificate city lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore')
       .lean();
 
     if (!worker) return res.status(404).json({ message: 'Worker not found.' });

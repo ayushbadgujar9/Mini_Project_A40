@@ -68,7 +68,8 @@ function calculateFairnessScore(worker, job = null) {
   // 4. ID Verification: 10 points if verified
   const isVerified = Boolean(
     worker.isVerified ||
-    worker.verificationStatus === 'verified'
+    worker.verificationStatus === 'verified' ||
+    worker.certificate?.verifiedAt
   );
   const verificationScore = isVerified ? 10 : 0;
 

@@ -251,16 +251,14 @@ router.put('/profile', isWorker, async (req, res) => {
 router.get('/profile', verifyToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select('name email skills primarySkill isVerified isEmailVerified verificationStatus role city phoneNumber dateOfBirth yearsOfExperience expectedDailyWage bio lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore idImagePath ocrExtractedText');
+      .select('name email skills primarySkill isVerified isEmailVerified verificationStatus role city phoneNumber dateOfBirth yearsOfExperience expectedDailyWage bio lastWorkedDate totalJobsCompleted isLocal stats ratings fairnessScore idImagePath ocrExtractedText certificate');
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    // Guard: If worker has never uploaded an ID image or had OCR text extracted,
-    // they should never be marked as ID-verified. Self-heal legacy OTP-marked records.
-    if (!user.idImagePath && !user.ocrExtractedText && (user.isVerified || user.verificationStatus === 'verified')) {
-      user.isVerified = false;
-      user.verificationStatus = 'unverified';
-      await user.save();
-    }
+    const isVerified = Boolean(
+      user.isVerified ||
+      user.verificationStatus === 'verified' ||
+      user.certificate?.verifiedAt
+    );
 
     return res.status(200).json({
       name:               user.name,
@@ -268,9 +266,10 @@ router.get('/profile', verifyToken, async (req, res) => {
       role:               user.role,
       skills:             user.skills,
       primarySkill:       user.primarySkill,
-      isVerified:         user.isVerified,
+      isVerified:         isVerified,
       isEmailVerified:    user.isEmailVerified,
-      verificationStatus: user.verificationStatus,
+      verificationStatus: isVerified ? 'verified' : user.verificationStatus,
+      certificate:        user.certificate || null,
       city:               user.city,
       phoneNumber:        user.phoneNumber,
       dateOfBirth:        user.dateOfBirth,
