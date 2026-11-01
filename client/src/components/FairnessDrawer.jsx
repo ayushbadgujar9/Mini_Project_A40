@@ -1,10 +1,10 @@
 import { Drawer } from './ui/Overlay';
 
-export const MAX_PROFILE_SCORE = 40;
+export const MAX_PROFILE_SCORE = 50;
 
 export function fairnessTier(score) {
-  if (score >= 30) return { label: 'Excellent', color: '#10b981', bg: 'rgba(16,185,129,0.12)' };
-  if (score >= 20) return { label: 'Good',      color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' };
+  if (score >= 40) return { label: 'Excellent', color: '#10b981', bg: 'rgba(16,185,129,0.12)' };
+  if (score >= 25) return { label: 'Good',      color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' };
   return            { label: 'Building',  color: '#6366f1', bg: 'rgba(99,102,241,0.12)' };
 }
 
@@ -16,11 +16,17 @@ export function computeFairness(profile) {
   const experience = fb?.experienceScore ?? Math.min(20, 10 + Math.max(0, completedJobs));
   const avgRating  = Number(profile.ratings?.average ?? 0);
   const feedback   = fb?.feedbackScore   ?? parseFloat(((Math.max(0, Math.min(5, avgRating)) / 5) * 5).toFixed(1));
-  const score      = profile.fairnessScore ?? fb?.totalScore ?? parseFloat((residency + experience + feedback).toFixed(1));
+  const isVerified  = Boolean(
+    profile.isVerified ||
+    profile.verificationStatus === 'verified' ||
+    profile.certificate?.verifiedAt
+  );
+  const verification = fb?.verificationScore ?? (isVerified ? 10 : 0);
+  const score = profile.fairnessScore ?? fb?.totalScore ??
+    parseFloat((residency + experience + feedback + verification).toFixed(1));
   const ratingCount = Number(profile.ratings?.count ?? 0);
-  const isVerified  = Boolean(profile.isVerified || profile.verificationStatus === 'verified');
   const tier = fairnessTier(score);
-  return { score, residency, experience, feedback, completedJobs, averageRating: avgRating, ratingCount, isLocal: Boolean(profile.isLocal), isVerified, tier };
+  return { score, residency, experience, feedback, verification, completedJobs, averageRating: avgRating, ratingCount, isLocal: Boolean(profile.isLocal), isVerified, tier };
 }
 
 function ScoreBar({ value, max, color }) {
@@ -54,13 +60,20 @@ export default function FairnessDrawer({ open, onClose, profile }) {
         ? `Avg ${f.averageRating}★ from ${f.ratingCount} review${f.ratingCount !== 1 ? 's' : ''} · mapped up to 5 pts.`
         : 'No ratings yet — up to 5 pts from employer reviews.',
     },
+    {
+      icon: '✅', label: 'ID Verification', pts: f.verification, max: 10,
+      color: '#10b981',
+      desc: f.isVerified
+        ? 'Identity verified — +10 pts awarded.'
+        : 'Upload a government ID or ITI certificate to earn +10 pts.',
+    },
   ];
 
   const tips = [];
   if (!f.isLocal) tips.push('Set your city to earn the +15 local residency pts.');
   if (f.experience < 20) tips.push(`Complete ${20 - f.experience} more job${20 - f.experience !== 1 ? 's' : ''} to reach the experience cap.`);
   if (f.ratingCount === 0) tips.push('Accept job requests so employers can rate you.');
-  if (!f.isVerified) tips.push('Upload your ITI certificate for faster job matching.');
+  if (!f.isVerified) tips.push('Upload your government ID or ITI certificate to earn the +10 verification pts.');
 
   const pct = Math.round((f.score / MAX_PROFILE_SCORE) * 100);
   const summaryParts = [];
@@ -127,7 +140,7 @@ export default function FairnessDrawer({ open, onClose, profile }) {
       )}
 
       <p className="fc-fine">
-        * Your profile score (max {MAX_PROFILE_SCORE} pts) measures your standing on the platform. The per-job match score is calculated separately based on proximity, skill fit, and employer needs.
+        * Your profile score (max {MAX_PROFILE_SCORE} pts: 15 local + 20 experience + 5 feedback + 10 verification) measures your standing on the platform. The per-job match score is calculated separately based on proximity, skill fit, and employer needs.
       </p>
     </Drawer>
   );

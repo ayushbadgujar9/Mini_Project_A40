@@ -9,7 +9,7 @@ import ChatDrawer, { ChatButton, LockedChatHint, useChatUnreadCounts } from '../
 import DropdownMenu from '../../components/ui/DropdownMenu';
 import SegmentedTabs from '../../components/ui/SegmentedTabs';
 import StatChip from '../../components/ui/StatChip';
-import FairnessDrawer, { computeFairness } from '../../components/FairnessDrawer';
+import FairnessDrawer, { computeFairness, MAX_PROFILE_SCORE } from '../../components/FairnessDrawer';
 
 const API = 'http://localhost:5000';
 
@@ -267,7 +267,7 @@ export default function WorkerDashboard() {
               aria-label="Open My Fairness Profile"
             >
               ⚖️ <span className="fc-hide-sm">My Fairness  </span>
-              {fairness.score} / 40
+              {fairness.score} / {MAX_PROFILE_SCORE}
             </button>
           )}
 
