@@ -5,6 +5,10 @@ import PostJobForm from '../../components/PostJobForm';
 import ContactCard from '../../components/ContactCard';
 import ChatDrawer, { ChatButton, useChatUnreadCounts } from '../../components/ChatDrawer';
 import StarRatingModal from '../../components/StarRatingModal';
+import { Modal } from '../../components/ui/Overlay';
+import DropdownMenu from '../../components/ui/DropdownMenu';
+import SegmentedTabs from '../../components/ui/SegmentedTabs';
+import StatChip from '../../components/ui/StatChip';
 
 const API = 'http://localhost:5000';
 
@@ -22,6 +26,12 @@ export default function EmployerDashboard() {
   // ── My posted jobs ─────────────────────────────────────────────────────────
   const [myJobs,      setMyJobs]      = useState([]);
   const [jobsLoading, setJobsLoading] = useState(true);
+
+  // ── Post job modal ─────────────────────────────────────────────────────────
+  const [showPostForm, setShowPostForm] = useState(false);
+
+  // ── Job status filter ──────────────────────────────────────────────────────
+  const [jobFilter, setJobFilter] = useState('all'); // 'all' | 'open' | 'assigned' | 'closed'
 
   // ── Fetch employer's own jobs ──────────────────────────────────────────────
   const fetchMyJobs = useCallback(async () => {
@@ -48,6 +58,12 @@ export default function EmployerDashboard() {
   const assignedCount = myJobs.filter((j) => j.status === 'assigned').length;
   const closedCount   = myJobs.filter((j) => j.status === 'closed').length;
 
+  // Derived visible jobs
+  const visibleJobs = myJobs.filter((j) => {
+    if (jobFilter === 'all') return true;
+    return j.status === jobFilter;
+  });
+
   // ── Chat drawer ────────────────────────────────────────────────
   const [chatDrawer, setChatDrawer] = useState(null);
   const unreadCounts = useChatUnreadCounts(token);
@@ -55,83 +71,149 @@ export default function EmployerDashboard() {
   // ── Rating Modal ───────────────────────────────────────────────
   const [ratingModal, setRatingModal] = useState(null);
 
-  return (
-    <div className="dashboard-page">
+  // First name
+  const fullName = user?.name || '';
+  const firstName = fullName.split(' ')[0] || '';
+  const greeting = firstName ? `Welcome back, ${firstName}` : 'Welcome back';
 
-      {/* ── Header ── */}
-      <header className="dashboard-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div className="brand-icon" style={{ width: 36, height: 36, fontSize: '1rem' }}>🔗</div>
-          <span className="dashboard-title">FairConnect</span>
+  // Avatar initial
+  const avatarInitial = (firstName[0] || 'E').toUpperCase();
+
+  // Tab definitions for job status filter
+  const jobStatusTabs = [
+    { id: 'all',      label: 'All',      count: myJobs.length },
+    { id: 'open',     label: 'Open',     count: openCount },
+    { id: 'assigned', label: 'Assigned', count: assignedCount },
+    { id: 'closed',   label: 'Closed',   count: closedCount },
+  ];
+
+  return (
+    <div className="fc-page">
+
+      {/* ── Top bar ── */}
+      <header className="fc-topbar">
+        <div className="fc-brand">
+          <div className="brand-icon" style={{ width: 32, height: 32, fontSize: '0.9rem' }}>🔗</div>
+          FairConnect
+          <span className="role-badge employer fc-hide-sm" style={{ marginLeft: '0.5rem' }}>Employer</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <span className="role-badge employer">Employer</span>
-          <button id="employer-logout-btn" className="btn-logout" onClick={handleLogout}>Sign Out</button>
+        <div className="fc-topbar-right">
+          <button
+            id="open-post-job-btn"
+            className="fc-btn fc-btn--primary"
+            onClick={() => setShowPostForm(true)}
+          >
+            ＋ Post a job
+          </button>
+          <DropdownMenu
+            label="Employer account menu"
+            align="right"
+            trigger={<div className="fc-avatar">{avatarInitial}</div>}
+            items={[
+              { label: 'Post a job', icon: '📢', onClick: () => setShowPostForm(true) },
+              { label: 'Sign Out',   icon: '🚪', danger: true, onClick: handleLogout },
+            ]}
+          />
         </div>
       </header>
 
-      {/* ── Hero ── */}
-      <section className="dashboard-hero" style={{ marginBottom: '2rem' }}>
-        <div className="dashboard-hero-icon">🏢</div>
-        <h1>Welcome, {user?.name || 'Employer'}!</h1>
-        <p>
-          You&apos;re logged in as an <strong>Employer</strong>. Post jobs, browse worker
-          profiles, and build your team with FairConnect&apos;s informal workforce.
-        </p>
-        <div style={{ marginTop: '2rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <StatCard icon="📢" label="Open Postings"     value={jobsLoading ? '…' : openCount}   color="var(--clr-employer)" />
-          <StatCard icon="🤝" label="Assigned (Active)" value={jobsLoading ? '…' : assignedCount} color="#34d399" />
-          <StatCard icon="🔒" label="Closed Postings"   value={jobsLoading ? '…' : closedCount} color="var(--clr-admin)" />
-          <StatCard icon="📋" label="Total Posted"      value={jobsLoading ? '…' : myJobs.length} color="var(--clr-secondary)" />
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          SECTION — POST A JOB
-      ══════════════════════════════════════════════════════════════════ */}
-      <div className="job-form-section">
-        <div className="section-header">
-          <div className="section-icon">📢</div>
-          <div>
-            <div className="section-title">Post a New Job</div>
-            <div className="section-subtitle">Fill in the details — workers will see it immediately</div>
-          </div>
+      {/* ── Greeting ── */}
+      <div className="fc-greeting" style={{ marginBottom: '1rem' }}>
+        <div>
+          <h1>{greeting}</h1>
+          <p style={{ fontSize: '0.88rem', color: 'var(--clr-text-muted)', marginTop: '0.25rem' }}>
+            Post jobs, browse worker profiles, and build your team.
+          </p>
         </div>
 
-        <PostJobForm
-          token={token}
-          onJobCreated={(newJob) => {
-            setMyJobs((prev) => [newJob, ...prev]);
-          }}
-        />
+        {/* KPI chips */}
+        <div className="fc-kpis cols-4" style={{ flexShrink: 0 }}>
+          <StatChip
+            icon="📢" label="Open" value={jobsLoading ? '…' : openCount}
+            tone="green" onClick={() => setJobFilter('open')}
+          />
+          <StatChip
+            icon="🤝" label="Assigned" value={jobsLoading ? '…' : assignedCount}
+            tone="amber" onClick={() => setJobFilter('assigned')}
+          />
+          <StatChip
+            icon="🔒" label="Closed" value={jobsLoading ? '…' : closedCount}
+            tone="rose" onClick={() => setJobFilter('closed')}
+          />
+          <StatChip
+            icon="📋" label="Total" value={jobsLoading ? '…' : myJobs.length}
+            tone="indigo" onClick={() => setJobFilter('all')}
+          />
+        </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          SECTION — MY POSTED JOBS
-      ══════════════════════════════════════════════════════════════════ */}
-      <div className="posted-jobs-section">
-        <div className="section-header">
-          <div className="section-icon">📋</div>
-          <div>
-            <div className="section-title">My Job Postings</div>
-            <div className="section-subtitle">
-              {jobsLoading ? 'Loading…' : `${myJobs.length} job${myJobs.length !== 1 ? 's' : ''} posted`}
-            </div>
+      {/* ── In-progress alert ── */}
+      {assignedCount > 0 && (
+        <div className="fc-alerts">
+          <div className="fc-alert fc-alert--info">
+            <span>
+              🤝 <strong>{assignedCount}</strong> job{assignedCount !== 1 ? 's' : ''} in progress: mark the job complete after the work is done so the worker is credited.
+            </span>
+            <button
+              className="fc-btn fc-btn--ghost fc-btn--sm"
+              onClick={() => setJobFilter('assigned')}
+            >
+              Review →
+            </button>
           </div>
         </div>
+      )}
 
+      {/* ── My job postings section ── */}
+      <div>
+        <div className="fc-section-head">
+          <h2>My job postings</h2>
+          <span>
+            {jobsLoading ? 'Loading…' : `${visibleJobs.length} of ${myJobs.length} job${myJobs.length !== 1 ? 's' : ''}`}
+          </span>
+        </div>
+
+        {/* Status filter tabs */}
+        <SegmentedTabs
+          tabs={jobStatusTabs}
+          value={jobFilter}
+          onChange={setJobFilter}
+          ariaLabel="Filter jobs by status"
+        />
+
+        {/* Job list */}
         {jobsLoading ? (
-          <div className="jobs-shimmer-list">
-            {[1, 2].map((n) => <div key={n} className="shimmer-card" />)}
+          <div className="fc-job-list">
+            {[1, 2].map((n) => <div key={n} className="shimmer-card" style={{ height: 80 }} />)}
           </div>
-        ) : myJobs.length === 0 ? (
-          <div className="jobs-empty">
-            <div className="jobs-empty-icon">📭</div>
-            <p>No jobs posted yet. Use the form above to get started!</p>
+        ) : visibleJobs.length === 0 ? (
+          <div className="fc-empty">
+            <div className="fc-empty-icon">📭</div>
+            <p style={{ marginBottom: '1rem' }}>
+              {jobFilter === 'all'
+                ? 'No jobs posted yet.'
+                : `No ${jobFilter} jobs.`}
+            </p>
+            {jobFilter === 'all' && (
+              <button
+                className="fc-btn fc-btn--primary"
+                onClick={() => setShowPostForm(true)}
+              >
+                ＋ Post your first job
+              </button>
+            )}
+            {jobFilter !== 'all' && (
+              <button
+                className="fc-btn fc-btn--ghost fc-btn--sm"
+                onClick={() => setJobFilter('all')}
+              >
+                View all jobs
+              </button>
+            )}
           </div>
         ) : (
-          <div className="employer-jobs-list">
-            {myJobs.map((job) => (
+          <div className="fc-job-list">
+            {visibleJobs.map((job) => (
               <EmployerJobRow
                 key={job._id}
                 job={job}
@@ -148,6 +230,25 @@ export default function EmployerDashboard() {
           </div>
         )}
       </div>
+
+      {/* ── Post Job Modal ── */}
+      <Modal
+        open={showPostForm}
+        onClose={() => setShowPostForm(false)}
+        title="Post a new job"
+        subtitle="Fill in the details. Workers will see it immediately."
+        icon="📢"
+        id="post-job-modal"
+      >
+        <PostJobForm
+          token={token}
+          onJobCreated={(newJob) => {
+            setMyJobs((prev) => [newJob, ...prev]);
+            setJobFilter('all');
+            setShowPostForm(false);
+          }}
+        />
+      </Modal>
 
       {/* ── Star Rating Modal ── */}
       {ratingModal && (
@@ -178,24 +279,6 @@ export default function EmployerDashboard() {
   );
 }
 
-// ── StatCard ──────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color }) {
-  return (
-    <div style={{
-      padding: '1.25rem 1.75rem',
-      background: 'rgba(255,255,255,0.04)',
-      border: '1px solid rgba(255,255,255,0.08)',
-      borderRadius: '16px',
-      textAlign: 'center',
-      minWidth: '130px',
-    }}>
-      <div style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{icon}</div>
-      <div style={{ fontSize: '1.5rem', fontWeight: 800, color, fontFamily: 'var(--font-display)' }}>{value}</div>
-      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '0.25rem' }}>{label}</div>
-    </div>
-  );
-}
-
 // ── EmployerJobRow ────────────────────────────────────────────────────────────
 function EmployerJobRow({ job, token, unreadCount = 0, onOpenChat, onRateWorker }) {
   const navigate = useNavigate();
@@ -211,11 +294,14 @@ function EmployerJobRow({ job, token, unreadCount = 0, onOpenChat, onRateWorker 
   const hasAccepted = !!job.acceptedApplication;
 
   return (
-    <div className="employer-job-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: '0.5rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-        <div className="ejr-left">
-          <div className="ejr-title">{job.title}</div>
-          <div className="ejr-meta">
+    <div className="fc-job">
+      <div className="fc-job-main">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="fc-job-title">{job.title}</div>
+          <div className="fc-job-meta">
+            <span className={`fc-badge-dot fc-badge-dot--${job.status}`}>
+              {job.status === 'open' ? 'Open' : job.status === 'assigned' ? 'Assigned' : 'Closed'}
+            </span>
             {skill && <span className="skill-pill">{skill.icon} {skill.label}</span>}
             <span className="wage-badge">₹{job.dailyWage}/day</span>
             {job.city && <span className="sw-city-tag">📍 {job.city}</span>}
@@ -226,59 +312,13 @@ function EmployerJobRow({ job, token, unreadCount = 0, onOpenChat, onRateWorker 
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <span className={`job-status-badge ${job.status}`}>
-            {job.status === 'open' ? '🟢 Open' : job.status === 'assigned' ? '🔒 Assigned' : '🔴 Closed'}
-          </span>
 
-          {hasAccepted && onOpenChat && (
-            <ChatButton
-              applicationId={job.acceptedApplication._id}
-              unreadCount={unreadCount}
-              onClick={onOpenChat}
-              label="💬 Chat with Worker"
-            />
-          )}
-
-          {hasAccepted && (
-            <button
-              id={`toggle-contact-btn-${job._id}`}
-              style={{
-                padding: '0.45rem 0.85rem',
-                borderRadius: 10,
-                border: '1px solid #cbd5e1',
-                background: showContact ? '#e2e8f0' : '#ffffff',
-                color: '#334155',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-              onClick={() => setShowContact(!showContact)}
-            >
-              {showContact ? 'Hide Contact' : '👤 Contact Info'}
-            </button>
-          )}
-
-          {hasAccepted && (
-            <button
-              id={`rate-worker-btn-${job._id}`}
-              className="btn-suggestions"
-              style={{ background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', color: '#fff', border: 'none' }}
-              onClick={() => onRateWorker && onRateWorker({
-                workerId: job.acceptedApplication.worker?._id || job.acceptedApplication.worker,
-                workerName: job.acceptedApplication.worker?.name || 'Worker',
-                jobId: job._id,
-                jobTitle: job.title,
-              })}
-            >
-              ⭐ Rate Worker
-            </button>
-          )}
-
+        <div className="fc-job-actions">
+          {/* Primary action */}
           {(job.status === 'open' || job.status === 'assigned') && (
             <button
               id={`view-suggestions-btn-${job._id}`}
-              className="btn-suggestions"
+              className="fc-btn fc-btn--primary fc-btn--sm"
               onClick={() => navigate(`/employer/jobs/${job._id}/suggested`)}
             >
               {job.status === 'assigned' ? '🤝 View Assigned Job' : '⚖️ Suggested Workers'}
@@ -287,17 +327,63 @@ function EmployerJobRow({ job, token, unreadCount = 0, onOpenChat, onRateWorker 
           {job.status === 'closed' && (
             <button
               id={`view-result-btn-${job._id}`}
-              className="btn-view-result"
+              className="fc-btn fc-btn--ghost fc-btn--sm"
               onClick={() => navigate(`/employer/jobs/${job._id}/suggested`)}
             >
               🏆 View Result
             </button>
           )}
+
+          {/* Chat button */}
+          {hasAccepted && onOpenChat && (
+            <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+              <button
+                className="fc-btn fc-btn--ghost fc-btn--sm"
+                onClick={onOpenChat}
+                aria-label="Chat with worker"
+              >
+                💬 Chat
+              </button>
+              {unreadCount > 0 && (
+                <span className="fc-unread" style={{ position: 'absolute', top: -6, right: -6 }}>
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* ⋯ More menu */}
+          {hasAccepted && (
+            <DropdownMenu
+              label="More actions"
+              align="right"
+              trigger={
+                <button className="fc-more" aria-label="More options">⋯</button>
+              }
+              items={[
+                {
+                  label: showContact ? 'Hide Contact' : 'Contact info',
+                  icon: '👤',
+                  onClick: () => setShowContact((p) => !p),
+                },
+                {
+                  label: 'Rate worker',
+                  icon: '⭐',
+                  onClick: () => onRateWorker && onRateWorker({
+                    workerId: job.acceptedApplication.worker?._id || job.acceptedApplication.worker,
+                    workerName: job.acceptedApplication.worker?.name || 'Worker',
+                    jobId: job._id,
+                    jobTitle: job.title,
+                  }),
+                },
+              ]}
+            />
+          )}
         </div>
       </div>
 
       {showContact && hasAccepted && (
-        <div style={{ marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px dashed #cbd5e1' }}>
+        <div className="fc-job-extra">
           <ContactCard applicationId={job.acceptedApplication._id} token={token} />
         </div>
       )}

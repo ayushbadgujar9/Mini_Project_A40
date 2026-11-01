@@ -6,7 +6,10 @@ import JobMap from '../../components/JobMap';
 import WorkerFeed from '../../components/WorkerFeed';
 import SkillCategoryFilter from '../../components/SkillCategoryFilter';
 import ChatDrawer, { ChatButton, LockedChatHint, useChatUnreadCounts } from '../../components/ChatDrawer';
-
+import DropdownMenu from '../../components/ui/DropdownMenu';
+import SegmentedTabs from '../../components/ui/SegmentedTabs';
+import StatChip from '../../components/ui/StatChip';
+import FairnessDrawer, { computeFairness } from '../../components/FairnessDrawer';
 
 const API = 'http://localhost:5000';
 
@@ -35,6 +38,9 @@ export default function WorkerDashboard() {
 
   // ── Edit skills modal ──────────────────────────────────────────────────────
   const [showEditSkills, setShowEditSkills] = useState(false);
+
+  // ── Fairness drawer ────────────────────────────────────────────────────────
+  const [showFairness, setShowFairness] = useState(false);
 
   // ── Job feed ───────────────────────────────────────────────────────────────
   const [jobs,        setJobs]        = useState([]);
@@ -201,44 +207,8 @@ export default function WorkerDashboard() {
   // Skills that appear in the feed (for filter chips)
   const feedSkillIds = [...new Set(jobs.map((j) => j.requiredSkill))];
 
-  // ── Compute live fairness estimate ─────────────────────────────────────────
-  const fairnessEstimate = (() => {
-    if (!profile) return null;
-
-    // 1. Local Residency: 15 points
-    const residency = profile.isLocal ? 15 : 0;
-
-    // 2. Experience & Progression: 10 base + 1 per completed job, strictly capped at 20
-    const completedJobs = Number(
-      profile.stats?.totalCompleted ??
-      profile.totalJobsCompleted ??
-      0
-    );
-    const experience = Math.min(20, 10 + Math.max(0, completedJobs));
-
-    // 3. Customer Feedback: 5-star rating mapped proportionally up to 5 points
-    const avgRating = Number(profile.ratings?.average ?? 0);
-    const feedback = parseFloat(((Math.max(0, Math.min(5, avgRating)) / 5) * 5).toFixed(1));
-
-    // 4. ID Verification: 10 points
-    const isVerified = Boolean(profile.isVerified || profile.verificationStatus === 'verified');
-    const verification = isVerified ? 10 : 0;
-
-    // Total score out of 50 max
-    const score = profile.fairnessScore ?? parseFloat((residency + experience + feedback + verification).toFixed(1));
-
-    return {
-      score,
-      residency,
-      experience,
-      feedback,
-      verification,
-      completedJobs,
-      averageRating: avgRating,
-      isLocal: Boolean(profile.isLocal),
-      isVerified,
-    };
-  })();
+  // ── Fairness (prefer server data, fallback to formula) ─────────────────────
+  const fairness = computeFairness(profile);
 
   // Helper to get application status for a specific job
   const getAppStatusForJob = (jobId) => {
@@ -263,386 +233,155 @@ export default function WorkerDashboard() {
     return true;
   });
 
-  return (
-    <div className="dashboard-page">
+  // First name
+  const fullName = profile?.name || user?.name || '';
+  const firstName = fullName.split(' ')[0] || 'Worker';
 
-      {/* ── Header ── */}
-      <header className="dashboard-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div className="brand-icon" style={{ width: 36, height: 36, fontSize: '1rem' }}>🔗</div>
-          <span className="dashboard-title">FairConnect</span>
+  // Avatar initial
+  const avatarInitial = (firstName[0] || 'W').toUpperCase();
+
+  // ── Tab definitions ────────────────────────────────────────────────────────
+  const workerTabs = [
+    { id: 'nearby',       label: 'Nearby Jobs',   icon: '📍', count: nearbyJobsCount || null },
+    { id: 'jobs',         label: 'All Jobs',       icon: '🔍', count: filteredJobs.length || null },
+    { id: 'applications', label: 'Applications',   icon: '📋', count: applications.length || null },
+    { id: 'completed',    label: 'Completed',      icon: '🏆', count: completedCount || null },
+  ];
+
+  return (
+    <div className="fc-page">
+
+      {/* ── Top bar ── */}
+      <header className="fc-topbar">
+        <div className="fc-brand">
+          <div className="brand-icon" style={{ width: 32, height: 32, fontSize: '0.9rem' }}>🔗</div>
+          FairConnect
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="fc-topbar-right">
+          {/* Fairness chip */}
+          {!profileLoading && profile && fairness && (
+            <button
+              id="open-fairness-btn"
+              className="fc-fairness-chip"
+              onClick={() => setShowFairness(true)}
+              aria-label="Open My Fairness Profile"
+            >
+              ⚖️ <span className="fc-hide-sm">My Fairness  </span>
+              {fairness.score} / 40
+            </button>
+          )}
+
+          {/* Verified / Pending badge */}
           {!profileLoading && profile && (
             profile.isVerified
-              ? <span className="badge-verified">✓ Verified</span>
-              : <span className="badge-pending">⏳ Pending</span>
+              ? <span className="badge-verified fc-hide-sm">✓ Verified</span>
+              : <span className="badge-pending fc-hide-sm">⏳ Pending</span>
           )}
-          <span className="role-badge worker">Worker</span>
-          <button id="worker-logout-btn" className="btn-logout" onClick={handleLogout}>Sign Out</button>
+
+          {/* Avatar dropdown */}
+          <DropdownMenu
+            label="Worker account menu"
+            align="right"
+            trigger={<div className="fc-avatar">{avatarInitial}</div>}
+            items={[
+              { label: 'My Fairness Profile', icon: '⚖️', onClick: () => setShowFairness(true) },
+              { label: 'Edit Skills',           icon: '✏️', onClick: () => setShowEditSkills(true) },
+              { label: 'Complete Profile / Certificate', icon: '📄', onClick: () => navigate('/worker/complete-profile') },
+              { label: 'Sign Out', icon: '🚪', danger: true, onClick: handleLogout },
+            ]}
+          />
         </div>
       </header>
 
-      {/* ── Hero ── */}
-      <section className="dashboard-hero" style={{ marginBottom: '2rem' }}>
-        <div className="dashboard-hero-icon">👷</div>
-        <h1>Welcome, {profile?.name || user?.name || 'Worker'}!</h1>
-        <p>
-          You&apos;re now logged in as a <strong>Worker</strong>. Explore job listings,
-          track your applications, and connect with employers — all in one place.
-        </p>
-
-        {/* Skill pills + Edit button */}
-        {!profileLoading && profile?.skills && profile.skills.length > 0 && (
-          <div style={{ marginTop: '1rem' }}>
-            <div className="skill-pills">
+      {/* ── Greeting row ── */}
+      <div className="fc-greeting">
+        <div>
+          <h1>Welcome back, {firstName} 👋</h1>
+          {!profileLoading && profile?.skills && profile.skills.length > 0 && (
+            <div className="fc-skill-row">
               {profile.skills.map((skill) => (
                 <span
                   key={skill}
-                  className={`skill-pill ${skill === profile.primarySkill ? 'primary' : ''}`}
+                  className={`skill-pill${skill === profile.primarySkill ? ' primary' : ''}`}
                 >
                   {skill === profile.primarySkill ? '⭐ ' : ''}{skill}
                 </span>
               ))}
             </div>
-            <button
-              id="edit-skills-btn"
-              className="btn-edit-skills"
-              onClick={() => setShowEditSkills(true)}
-            >
-              ✏️ Edit Skills
-            </button>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Stat cards */}
-        <div style={{ marginTop: '2rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <StatCard
+        {/* KPI chips on the right */}
+        <div className="fc-kpis" style={{ flexShrink: 0 }}>
+          <StatChip
             icon="💼"
             label="Available Jobs"
             value={jobsLoading ? '…' : (activeTab === 'nearby' && nearbyJobsCount !== null ? nearbyJobsCount : filteredJobs.length)}
-            color="var(--clr-worker)"
+            tone="green"
             onClick={() => setActiveTab(activeTab === 'nearby' ? 'nearby' : 'jobs')}
           />
-          <StatCard
+          <StatChip
             icon="📋"
-            label="My Applications"
+            label="Applications"
             value={appsLoading ? '…' : applications.length}
-            color="var(--clr-secondary)"
-            onClick={() => {
-              setAppFilter('all');
-              setActiveTab('applications');
-            }}
+            tone="indigo"
+            onClick={() => { setAppFilter('all'); setActiveTab('applications'); }}
           />
-          <StatCard
+          <StatChip
             icon="🏆"
-            label="Jobs Completed"
+            label="Completed"
             value={appsLoading ? '…' : completedCount}
-            color="#6366f1"
-            onClick={() => {
-              setAppFilter('completed');
-              setActiveTab('completed');
-            }}
+            tone="amber"
+            onClick={() => { setAppFilter('completed'); setActiveTab('completed'); }}
           />
-        </div>
-
-        {/* Complete profile CTA */}
-        {profileIncomplete && (
-          <button
-            id="complete-profile-btn"
-            className="prompt-card"
-            onClick={() => navigate('/worker/complete-profile')}
-            style={{ border: 'none', width: '100%', maxWidth: 560, margin: '1.5rem auto 0' }}
-          >
-            <div className="prompt-card-text" style={{ textAlign: 'left' }}>
-              <h3>🚀 Complete Your Profile</h3>
-              <p>Add your skills and upload your ITI or vocational training certificate to unlock job opportunities and boost your profile credibility.</p>
-            </div>
-            <span className="prompt-card-arrow">→</span>
-          </button>
-        )}
-      </section>
-
-      {/* ── Fairness Profile Card ── */}
-      {!profileLoading && profile && fairnessEstimate && (
-        <div className="fairness-profile-card">
-          <div className="fpc-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div className="fpc-icon">⚖️</div>
-              <div>
-                <div className="fpc-title">My Fairness Profile</div>
-                <div className="fpc-subtitle">How the Fairness Engine currently scores you</div>
-              </div>
-            </div>
-            <div className="fpc-score-bubble"
-              style={{
-                background: fairnessEstimate.score >= 35
-                  ? 'linear-gradient(135deg,#34d399,#059669)'
-                  : fairnessEstimate.score >= 25
-                  ? 'linear-gradient(135deg,#f59e0b,#d97706)'
-                  : 'linear-gradient(135deg,#6366f1,#4f46e5)',
-              }}
-            >
-              <div className="fpc-score-num">{fairnessEstimate.score}</div>
-              <div className="fpc-score-label">/ 50 pts max</div>
-            </div>
-          </div>
-
-          <div className="fpc-breakdown">
-            {/* Local Residency */}
-            <div className="fpc-row">
-              <div className="fpc-row-left">
-                <span className="fpc-row-icon">📍</span>
-                <div>
-                  <div className="fpc-row-name">Local Residency Status</div>
-                  <div className="fpc-row-desc">
-                    {fairnessEstimate.isLocal
-                      ? 'Local resident status verified (+15 pts)'
-                      : 'Non-local status (0 pts) — earn +15 pts for verified local residency'}
-                  </div>
-                </div>
-              </div>
-              <span className="fpc-badge" style={{ background: fairnessEstimate.isLocal ? 'rgba(52,211,153,0.15)' : 'rgba(100,116,139,0.2)', color: fairnessEstimate.isLocal ? '#34d399' : '#94a3b8' }}>
-                +{fairnessEstimate.residency} pts
-              </span>
-            </div>
-
-            {/* Experience & Progression */}
-            <div className="fpc-row">
-              <div className="fpc-row-left">
-                <span className="fpc-row-icon">🔨</span>
-                <div>
-                  <div className="fpc-row-name">Experience &amp; Progression</div>
-                  <div className="fpc-row-desc">
-                    10 base pts for new workers + 1 pt per completed job ({fairnessEstimate.completedJobs} completed) · Capped at 20 pts max
-                  </div>
-                </div>
-              </div>
-              <span className="fpc-badge" style={{ background: 'rgba(34,211,238,0.15)', color: '#22d3ee' }}>
-                +{fairnessEstimate.experience} pts
-              </span>
-            </div>
-
-            {/* Customer Feedback */}
-            <div className="fpc-row">
-              <div className="fpc-row-left">
-                <span className="fpc-row-icon">⭐</span>
-                <div>
-                  <div className="fpc-row-name">Customer Feedback Rating</div>
-                  <div className="fpc-row-desc">
-                    {fairnessEstimate.averageRating > 0
-                      ? `Average rating: ${fairnessEstimate.averageRating}★ — mapped proportionally up to 5 pts`
-                      : 'No employer ratings yet — up to +5 pts available from 5-star reviews'}
-                  </div>
-                </div>
-              </div>
-              <span className="fpc-badge" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
-                +{fairnessEstimate.feedback} pts
-              </span>
-            </div>
-
-            {/* Government ID Verification */}
-            <div className="fpc-row">
-              <div className="fpc-row-left">
-                <span className="fpc-row-icon">🪪</span>
-                <div>
-                  <div className="fpc-row-name">Government ID Verification</div>
-                  <div className="fpc-row-desc">
-                    {fairnessEstimate.isVerified
-                      ? 'Government ID verified (+10 pts)'
-                      : 'Unverified ID (0 pts) — complete ID verification to earn +10 pts'}
-                  </div>
-                </div>
-              </div>
-              <span className="fpc-badge" style={{ background: fairnessEstimate.isVerified ? 'rgba(52,211,153,0.15)' : 'rgba(100,116,139,0.2)', color: fairnessEstimate.isVerified ? '#34d399' : '#94a3b8' }}>
-                +{fairnessEstimate.verification} pts
-              </span>
-            </div>
-          </div>
-
-          <div className="fpc-footer">
-            * Fairness score is dynamically computed from Local Residency (15 pts), Experience Progression (20 pts max), Customer Feedback (5 pts max), and ID Verification (10 pts).
-          </div>
-        </div>
-      )}
-
-      {/* ── Pending Offers Banner ── */}
-      {(() => {
-        const pendingOffers = applications.filter(
-          (a) => a.status === 'offered' || (a.initiatedBy === 'employer' && a.status === 'pending')
-        );
-        if (pendingOffers.length === 0) return null;
-        return (
-          <div style={{
-            maxWidth: 900,
-            margin: '0 auto 1.5rem',
-            padding: '1rem 1.25rem',
-            borderRadius: 'var(--radius-lg, 16px)',
-            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(217, 119, 6, 0.08))',
-            border: '1px solid rgba(245, 158, 11, 0.4)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '1rem',
-            animation: 'fadeIn 300ms ease',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <span style={{ fontSize: '2rem' }}>📩</span>
-              <div>
-                <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: '0.98rem' }}>
-                  You have {pendingOffers.length} Job Request{pendingOffers.length !== 1 ? 's' : ''} from Employer{pendingOffers.length !== 1 ? 's' : ''}!
-                </div>
-                <div style={{ color: '#cbd5e1', fontSize: '0.85rem' }}>
-                  An employer wants to hire you. Accept to freeze the job and start working.
-                </div>
-              </div>
-            </div>
-            <button
-              id="view-requests-btn"
-              onClick={() => setActiveTab('applications')}
-              style={{
-                padding: '0.6rem 1.2rem',
-                borderRadius: 'var(--radius-md, 12px)',
-                background: '#f59e0b',
-                color: '#000',
-                fontWeight: 800,
-                fontSize: '0.85rem',
-                border: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              View & Respond →
-            </button>
-          </div>
-        );
-      })()}
-
-      {/* ══════════════════════════════════════════════════════════════════
-          TAB SWITCHER — Nearby / Jobs / My Applications / Completed Jobs
-      ══════════════════════════════════════════════════════════════════ */}
-      <div style={{ maxWidth: 900, margin: '0 auto 1.5rem', padding: '0 1rem' }}>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-          background: 'var(--clr-bg-mid, #f1f5f9)',
-          borderRadius: 'var(--radius-md, 12px)',
-          padding: '5px',
-          border: '1px solid var(--clr-border, #e2e8f0)',
-          gap: '4px',
-        }}>
-          <button
-            id="tab-nearby-btn"
-            onClick={() => setActiveTab('nearby')}
-            style={{
-              padding: '0.7rem 0.8rem',
-              border: 'none',
-              borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
-              fontWeight: 700,
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.45rem',
-              transition: 'all 250ms',
-              background: activeTab === 'nearby' ? 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))' : 'transparent',
-              color: activeTab === 'nearby' ? '#fff' : 'var(--clr-text-dim, #64748b)',
-              boxShadow: activeTab === 'nearby' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
-            }}
-          >
-            📍 Nearby Jobs
-          </button>
-          <button
-            id="tab-jobs-btn"
-            onClick={() => setActiveTab('jobs')}
-            style={{
-              padding: '0.7rem 0.8rem',
-              border: 'none',
-              borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
-              fontWeight: 700,
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.45rem',
-              transition: 'all 250ms',
-              background: activeTab === 'jobs' ? 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))' : 'transparent',
-              color: activeTab === 'jobs' ? '#fff' : 'var(--clr-text-dim, #64748b)',
-              boxShadow: activeTab === 'jobs' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
-            }}
-          >
-            🔍 All Jobs
-          </button>
-          <button
-            id="tab-applications-btn"
-            onClick={() => {
-              setAppFilter('all');
-              setActiveTab('applications');
-            }}
-            style={{
-              padding: '0.7rem 0.8rem',
-              border: 'none',
-              borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
-              fontWeight: 700,
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.45rem',
-              transition: 'all 250ms',
-              background: activeTab === 'applications' ? 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))' : 'transparent',
-              color: activeTab === 'applications' ? '#fff' : 'var(--clr-text-dim, #64748b)',
-              boxShadow: activeTab === 'applications' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
-            }}
-          >
-            📋 Applications {applications.length > 0 && <span style={{
-              background: 'rgba(255,255,255,0.25)',
-              borderRadius: '9999px',
-              padding: '0.1rem 0.45rem',
-              fontSize: '0.72rem',
-            }}>{applications.length}</span>}
-          </button>
-          <button
-            id="tab-completed-btn"
-            onClick={() => {
-              setAppFilter('completed');
-              setActiveTab('completed');
-            }}
-            style={{
-              padding: '0.7rem 0.8rem',
-              border: 'none',
-              borderRadius: 'calc(var(--radius-md, 12px) - 3px)',
-              fontWeight: 700,
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.45rem',
-              transition: 'all 250ms',
-              background: activeTab === 'completed' ? 'var(--grad-primary, linear-gradient(135deg, #10b981, #059669))' : 'transparent',
-              color: activeTab === 'completed' ? '#fff' : 'var(--clr-text-dim, #64748b)',
-              boxShadow: activeTab === 'completed' ? '0 4px 16px var(--clr-primary-glow, rgba(16,185,129,0.15))' : 'none',
-            }}
-          >
-            🏆 Completed {completedCount > 0 && <span style={{
-              background: 'rgba(255,255,255,0.25)',
-              borderRadius: '9999px',
-              padding: '0.1rem 0.45rem',
-              fontSize: '0.72rem',
-            }}>{completedCount}</span>}
-          </button>
         </div>
       </div>
+
+      {/* ── Slim alerts ── */}
+      <div className="fc-alerts">
+        {offeredApps.length > 0 && (
+          <div className="fc-alert fc-alert--warn">
+            <span>📩 <strong>{offeredApps.length}</strong> job request{offeredApps.length !== 1 ? 's' : ''} waiting for you</span>
+            <button
+              id="view-requests-btn"
+              className="fc-btn fc-btn--amber fc-btn--sm"
+              onClick={() => { setAppFilter('offered'); setActiveTab('applications'); }}
+            >
+              View &amp; respond →
+            </button>
+          </div>
+        )}
+        {profileIncomplete && (
+          <div className="fc-alert fc-alert--info">
+            <span>🚀 Complete your profile to unlock job opportunities</span>
+            <button
+              id="complete-profile-btn"
+              className="fc-btn fc-btn--ghost fc-btn--sm"
+              onClick={() => navigate('/worker/complete-profile')}
+            >
+              Complete profile →
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Tab switcher ── */}
+      <SegmentedTabs
+        tabs={workerTabs}
+        value={activeTab}
+        onChange={(id) => {
+          if (id === 'applications') setAppFilter('all');
+          if (id === 'completed') setAppFilter('completed');
+          setActiveTab(id);
+        }}
+        ariaLabel="Dashboard sections"
+      />
 
       {/* ══════════════════════════════════════════════════════════════════
           TAB: NEARBY JOBS (RADIUS DISCOVERY WITH WORKER FEED & MAP)
       ══════════════════════════════════════════════════════════════════ */}
       {activeTab === 'nearby' && (
-        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 1rem' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 0' }}>
           <WorkerFeed
             token={token}
             onJobApplied={handleJobApplied}
@@ -961,7 +700,7 @@ export default function WorkerDashboard() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <div className="section-icon" style={{ width: 36, height: 36, fontSize: '1rem', background: '#eef2ff', borderColor: '#c7d2fe' }}>🏆</div>
               <div>
-                <div className="section-title">Completed Jobs & Work History</div>
+                <div className="section-title">Completed Jobs &amp; Work History</div>
                 <div className="section-subtitle">
                   {appsLoading ? 'Loading…' : `${completedCount} job${completedCount !== 1 ? 's' : ''} completed and verified`}
                 </div>
@@ -1077,6 +816,13 @@ export default function WorkerDashboard() {
           }}
         />
       )}
+
+      {/* ── Fairness Drawer ── */}
+      <FairnessDrawer
+        open={showFairness}
+        onClose={() => setShowFairness(false)}
+        profile={profile}
+      />
 
       {/* ── Chat Drawer ── */}
       {chatDrawer && (
@@ -1250,50 +996,6 @@ function ApplicationRow({ application, responding, onRespond, unreadCount = 0, o
     </div>
   );
 }
-
-
-// ── StatCard ──────────────────────────────────────────────────────────────────
-function StatCard({ icon, label, value, color, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && onClick() : undefined}
-      style={{
-        padding: '1.25rem 1.75rem',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '16px',
-        textAlign: 'center',
-        minWidth: '130px',
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'all 200ms ease',
-        userSelect: 'none',
-      }}
-      onMouseEnter={onClick ? (e) => {
-        e.currentTarget.style.transform = 'translateY(-3px)';
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.22)';
-        e.currentTarget.style.background = 'rgba(255,255,255,0.07)';
-        e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.18)';
-      } : undefined}
-      onMouseLeave={onClick ? (e) => {
-        e.currentTarget.style.transform = 'none';
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)';
-        e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-        e.currentTarget.style.boxShadow = 'none';
-      } : undefined}
-    >
-      <div style={{ fontSize: '1.75rem', marginBottom: '0.5rem' }}>{icon}</div>
-      <div style={{ fontSize: '1.5rem', fontWeight: 800, color, fontFamily: 'var(--font-display)' }}>{value}</div>
-      <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '0.25rem' }}>
-        {label} {onClick && <span style={{ opacity: 0.6 }}>→</span>}
-      </div>
-    </div>
-  );
-}
-
-
 
 
 // ── EditSkillsModal ───────────────────────────────────────────────────────────
