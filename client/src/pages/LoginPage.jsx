@@ -485,7 +485,7 @@ export default function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="e.g. employer@apexconstructions.com"
+                    placeholder={role === 'employer' ? 'e.g. customer@example.com' : 'e.g. ramesh.patil@example.com'}
                     autoFocus
                     autoComplete="email"
                     required
@@ -617,9 +617,9 @@ export default function LoginPage() {
                           transition: 'all 0.15s ease',
                         }}
                       >
-                        <div style={{ fontSize: '1.35rem', marginBottom: '0.2rem' }}>🏢</div>
+                        <div style={{ fontSize: '1.35rem', marginBottom: '0.2rem' }}>🤝</div>
                         <div style={{ fontSize: '0.85rem', fontWeight: 700, color: role === 'employer' ? '#b45309' : '#334155' }}>
-                          Employer
+                          Customer
                         </div>
                       </button>
                     </div>

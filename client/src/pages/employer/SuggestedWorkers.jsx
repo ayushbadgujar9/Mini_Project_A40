@@ -157,7 +157,7 @@ export default function SuggestedWorkers() {
           <span className="dashboard-title">FairConnect</span>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <span className="role-badge employer">Employer</span>
+          <span className="role-badge employer">Customer</span>
           <button className="btn-secondary" onClick={() => navigate('/employer/dashboard')}>
             ← Back to Dashboard
           </button>

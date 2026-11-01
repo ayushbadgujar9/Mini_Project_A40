@@ -681,7 +681,7 @@ export default function WorkerDashboard() {
                   unreadCount={unreadCounts[app._id] || 0}
                   onOpenChat={() => setChatDrawer({
                     applicationId: app._id,
-                    otherPartyName: app.job?.employerId?.name || 'Employer',
+                    otherPartyName: app.job?.employerId?.name || 'Customer',
                     isReadOnly: app.status === 'completed',
                   })}
                 />
@@ -764,7 +764,7 @@ export default function WorkerDashboard() {
               <div className="jobs-empty-icon">🏆</div>
               <p style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' }}>No completed jobs recorded yet</p>
               <p style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: 440, margin: '0 auto' }}>
-                Once an employer hires you and marks the job as complete, it will appear here along with your earnings, verification records, and chat transcripts.
+                Once a customer hires you and marks the job as complete, it will appear here along with your earnings, verification records, and chat transcripts.
               </p>
               <button
                 onClick={() => setActiveTab('jobs')}
@@ -794,7 +794,7 @@ export default function WorkerDashboard() {
                   unreadCount={unreadCounts[app._id] || 0}
                   onOpenChat={() => setChatDrawer({
                     applicationId: app._id,
-                    otherPartyName: app.job?.employerId?.name || 'Employer',
+                    otherPartyName: app.job?.employerId?.name || 'Customer',
                     isReadOnly: true,
                   })}
                 />
@@ -863,7 +863,7 @@ function ApplicationRow({ application, responding, onRespond, unreadCount = 0, o
   const isChatEligible = status === 'accepted' || status === 'completed';
 
   const statusConfig = {
-    offered:   { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.45)', color: '#d97706', icon: '📩', label: 'Job Request from Employer' },
+    offered:   { bg: 'rgba(245, 158, 11, 0.15)', border: 'rgba(245, 158, 11, 0.45)', color: '#d97706', icon: '📩', label: 'Job Request from Customer' },
     pending:   { bg: 'rgba(245, 158, 11, 0.10)', border: 'rgba(245, 158, 11, 0.30)', color: '#b45309', icon: '⏳', label: 'Pending Review' },
     accepted:  { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.45)', color: '#047857', icon: '✅', label: 'Hired & Assigned' },
     rejected:  { bg: 'rgba(239, 68, 68, 0.10)', border: 'rgba(239, 68, 68, 0.30)', color: '#b91c1c', icon: '❌', label: 'Not Selected' },
@@ -917,7 +917,7 @@ function ApplicationRow({ application, responding, onRespond, unreadCount = 0, o
           {job?.dailyWage && <span style={{ fontWeight: 700, color: '#0f172a' }}>₹{job.dailyWage}/day</span>}
           {job?.city && <span>📍 {job.city}</span>}
           <span style={{ color: 'var(--clr-text-faint, #94a3b8)' }}>{appliedDate}</span>
-          {job?.employerId?.name && <span>🏢 {job.employerId.name}</span>}
+          {job?.employerId?.name && <span>👤 {job.employerId.name}</span>}
         </div>
       </div>
 

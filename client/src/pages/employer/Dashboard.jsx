@@ -95,7 +95,7 @@ export default function EmployerDashboard() {
         <div className="fc-brand">
           <div className="brand-icon" style={{ width: 32, height: 32, fontSize: '0.9rem' }}>🔗</div>
           FairConnect
-          <span className="role-badge employer fc-hide-sm" style={{ marginLeft: '0.5rem' }}>Employer</span>
+          <span className="role-badge employer fc-hide-sm" style={{ marginLeft: '0.5rem' }}>Customer</span>
         </div>
         <div className="fc-topbar-right">
           <button
@@ -106,7 +106,7 @@ export default function EmployerDashboard() {
             ＋ Post a job
           </button>
           <DropdownMenu
-            label="Employer account menu"
+            label="Customer account menu"
             align="right"
             trigger={<div className="fc-avatar">{avatarInitial}</div>}
             items={[

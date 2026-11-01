@@ -509,7 +509,7 @@ export default function AdminDashboard() {
                   icon="👥"
                   title="Total Users"
                   value={stats.totalUsers || users.length || (stats.totalWorkers + stats.totalEmployers + 1)}
-                  subtitle="Workers, Employers & Admins (Click to view)"
+                  subtitle="Workers, Customers & Admins (Click to view)"
                   color="#3b82f6"
                   onClick={() => {
                     setUserFilterRole('all');
@@ -530,10 +530,10 @@ export default function AdminDashboard() {
                 />
 
                 <MetricCard
-                  icon="🏢"
-                  title="Total Employers"
+                  icon="👤"
+                  title="Total Customers"
                   value={stats.totalEmployers || 0}
-                  subtitle="Active Job Creators (Click to view)"
+                  subtitle="Active Job Posters (Click to view)"
                   color="#f59e0b"
                   onClick={() => {
                     setUserFilterRole('employer');
@@ -567,7 +567,7 @@ export default function AdminDashboard() {
                   <div className="tile-icon">👥</div>
                   <div className="tile-body">
                     <h3>Manage Platform Users ({users.length || stats.totalUsers || 0})</h3>
-                    <p>Inspect workers, employers, and admins, toggle verifications, or remove accounts.</p>
+                    <p>Inspect workers, customers, and admins, toggle verifications, or remove accounts.</p>
                   </div>
                   <span className="tile-arrow">→</span>
                 </div>
@@ -701,7 +701,7 @@ export default function AdminDashboard() {
                   <input
                     type="text"
                     className="search-input"
-                    placeholder="Search by job title, employer name, or city..."
+                    placeholder="Search by job title, customer name, or city..."
                     value={jobSearch}
                     onChange={(e) => setJobSearch(e.target.value)}
                   />
@@ -749,7 +749,7 @@ export default function AdminDashboard() {
                     <thead>
                       <tr>
                         <th>Job Listing</th>
-                        <th>Employer</th>
+                        <th>Customer</th>
                         <th>Required Skill</th>
                         <th>Daily Wage & City</th>
                         <th>Status</th>
@@ -770,7 +770,7 @@ export default function AdminDashboard() {
 
                           <td>
                             <div className="employer-cell">
-                              <span className="emp-name">{job.employerId?.name || 'Unknown Employer'}</span>
+                              <span className="emp-name">{job.employerId?.name || 'Unknown Customer'}</span>
                               {job.employerId?.phoneNumber && (
                                 <span className="emp-phone">📱 {job.employerId.phoneNumber}</span>
                               )}
@@ -855,7 +855,7 @@ export default function AdminDashboard() {
                       <div>
                         <div className="fm-job-title">{job.title}</div>
                         <div className="fm-job-meta">
-                          <span>🏢 {job.employerId?.name || 'Unknown Employer'}</span>
+                          <span>👤 {job.employerId?.name || 'Unknown Customer'}</span>
                           {job.city && <span>📍 {job.city}</span>}
                           <span>₹{job.dailyWage}/day</span>
                           <span className={`job-status-badge ${job.status}`}>
@@ -946,7 +946,7 @@ export default function AdminDashboard() {
                     className={`pill-btn ${userFilterRole === 'employer' ? 'active' : ''}`}
                     onClick={() => setUserFilterRole('employer')}
                   >
-                    🏢 Employers ({users.filter((u) => u.role === 'employer').length})
+                    👤 Customers ({users.filter((u) => u.role === 'employer').length})
                   </button>
                   <button
                     className={`pill-btn ${userFilterRole === 'admin' ? 'active' : ''}`}

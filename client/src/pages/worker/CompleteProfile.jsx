@@ -320,7 +320,7 @@ export default function CompleteProfile() {
               id="worker-bio-input"
               rows={3}
               maxLength={300}
-              placeholder="Tell employers a little about yourself, your work style, and what you specialise in..."
+              placeholder="Tell customers a little about yourself, your work style, and what you specialise in..."
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               style={{ width: '100%', padding: '0.6rem 0.85rem', borderRadius: '10px', border: '1px solid var(--clr-border)', background: '#fff', fontSize: '0.87rem', resize: 'vertical', lineHeight: 1.5 }}
