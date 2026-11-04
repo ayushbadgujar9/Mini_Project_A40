@@ -1,9 +1,11 @@
 const nodemailer = require('nodemailer');
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Check if real SMTP credentials are configured (Brevo or custom)
+// Check if real SMTP or API credentials are configured (Brevo or custom)
 // ──────────────────────────────────────────────────────────────────────────────
 function isSmtpConfigured() {
+  if (process.env.BREVO_API_KEY && process.env.BREVO_API_KEY.trim()) return true;
+
   const user = (process.env.SMTP_USER || '').trim();
   const pass = (process.env.SMTP_PASS || '').trim();
 
@@ -41,7 +43,7 @@ function createTransporter() {
       user: (process.env.SMTP_USER || '').trim(),
       pass: (process.env.SMTP_PASS || '').trim(),
     },
-    connectionTimeout: 10000, // 10s connection timeout for responsive OTPs
+    connectionTimeout: 10000,
     greetingTimeout: 10000,
   });
 }
@@ -49,18 +51,66 @@ function createTransporter() {
 // Singleton transporter instance for reuse
 const transporter = createTransporter();
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Verify Brevo SMTP connection
-// ──────────────────────────────────────────────────────────────────────────────
 async function verifySmtpConnection() {
   const transport = createTransporter();
   return transport.verify();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Send via Brevo HTTPS REST API (Bypasses Render free tier SMTP port blocks)
+// Runs on HTTPS port 443 — NEVER blocked by Render or any cloud host
+// ──────────────────────────────────────────────────────────────────────────────
+async function sendViaBrevoApi(apiKey, { to, subject, html, text }) {
+  const fromEmail = (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
+  const fromName = (process.env.SMTP_FROM_NAME || 'FairConnect').trim();
+
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': apiKey.trim(),
+      'Content-Type': 'application/json',
+      'accept': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: fromName, email: fromEmail },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Brevo HTTP API error (${response.status}): ${errorBody}`);
+  }
+
+  const result = await response.json();
+  console.log(`✅ [Brevo HTTPS API] Real-time email sent to ${to}. (MessageId: ${result.messageId || 'OK'})`);
+  return result;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Generic send helper with Brevo support & dev fallback
 // ──────────────────────────────────────────────────────────────────────────────
 async function sendMail({ to, subject, html, text, otpCode }) {
+  // 1. Try Brevo HTTPS REST API first if API key is provided (port 443 — works on Render free tier!)
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim() ||
+    (process.env.SMTP_PASS && process.env.SMTP_PASS.trim().startsWith('xkeysib-') ? process.env.SMTP_PASS.trim() : null);
+
+  if (brevoApiKey) {
+    try {
+      return await sendViaBrevoApi(brevoApiKey, { to, subject, html, text });
+    } catch (apiErr) {
+      console.error(`❌ [Brevo API Error]: ${apiErr.message}`);
+      if (otpCode) {
+        console.log(`📨 [FALLBACK OTP for ${to}]: >>> ${otpCode} <<<`);
+      }
+      throw apiErr;
+    }
+  }
+
+  // 2. Dev mode check
   if (!isSmtpConfigured()) {
     console.log('\n╔══════════════════════════════════════════════════════════╗');
     console.log('║ 📨 [DEV MODE OTP EMAIL — Brevo SMTP not configured]');
@@ -74,6 +124,7 @@ async function sendMail({ to, subject, html, text, otpCode }) {
     return { messageId: 'dev-mock-id', response: 'Logged to dev console' };
   }
 
+  // 3. Standard SMTP fallback (works locally, but Render free tier blocks outbound port 587)
   const transport = createTransporter();
   const fromEmail = (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim();
   const fromName = (process.env.SMTP_FROM_NAME || 'FairConnect').trim();
@@ -91,7 +142,9 @@ async function sendMail({ to, subject, html, text, otpCode }) {
   } catch (err) {
     console.error(`❌ [Brevo SMTP Error] Failed to send email to ${to}: ${err.message}`);
 
-    if (err.responseCode === 535 || err.message.includes('Invalid login') || err.message.includes('Authentication')) {
+    if (err.message.includes('timeout') || err.code === 'ETIMEDOUT') {
+      console.error('👉 Notice: Render free tier blocks outbound SMTP port 587. To send real emails from Render, generate a Brevo API Key (starts with xkeysib-) and set BREVO_API_KEY in Render Environment.');
+    } else if (err.responseCode === 535 || err.message.includes('Invalid login') || err.message.includes('Authentication')) {
       console.error('👉 Tip: Check your Brevo SMTP login (SMTP_USER) and SMTP key (SMTP_PASS) in server/.env');
     } else if (err.message.includes('sender') || err.message.includes('Sender') || err.responseCode === 550) {
       console.error(`👉 Tip: Brevo requires the sender address "${fromEmail}" to be a verified sender in your Brevo account (Settings -> Senders & IP).`);
