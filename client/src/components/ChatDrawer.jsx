@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import ContactCard from './ContactCard';
 import ChatBox from './ChatBox';
+import API_BASE_URL from '../config';
 
-const API = 'http://localhost:5000';
+const API = API_BASE_URL;
 const UNREAD_POLL_INTERVAL = 15000; // 15 seconds
 
 /**

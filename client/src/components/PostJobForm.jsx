@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-
-const API_BASE_URL = 'http://localhost:5000';
+import API_BASE_URL from '../config';
 
 // ── Skills catalogue matching FairConnect standard trades ────────────────────
 export const SKILL_OPTIONS = [

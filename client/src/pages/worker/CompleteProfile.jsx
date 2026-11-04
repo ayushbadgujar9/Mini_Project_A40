@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import CertificateUpload from '../../components/CertificateUpload';
+import API_BASE_URL from '../../config';
 
 // ── Skill catalogue ──────────────────────────────────────────────────────────
 const SKILLS = [
@@ -12,7 +13,8 @@ const SKILLS = [
 
 const PRESET_CITIES = ['Kolhapur', 'Sangli', 'Pune', 'Satara', 'Ichalkaranji'];
 
-const API = 'http://localhost:5000';
+
+const API = API_BASE_URL;
 
 export default function CompleteProfile() {
   const { token } = useAuth();

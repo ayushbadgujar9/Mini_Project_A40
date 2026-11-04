@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import API_BASE_URL from '../config';
 
 // Fix Leaflet's default marker icon paths in bundlers (Vite/Webpack)
 delete L.Icon.Default.prototype._getIconUrl;
@@ -233,7 +234,7 @@ export default function JobMap({
 
     try {
       if (token) {
-        const res = await fetch(`http://localhost:5000/api/applications/apply/${job._id}`, {
+        const res = await fetch(`${API_BASE_URL}/api/applications/apply/${job._id}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

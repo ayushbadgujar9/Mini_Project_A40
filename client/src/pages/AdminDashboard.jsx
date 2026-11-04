@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import API_BASE_URL from '../config';
 
-const API = 'http://localhost:5000';
+const API = API_BASE_URL;
 
 function formatDate(iso) {
   if (!iso) return 'N/A';
@@ -1231,7 +1232,7 @@ function WorkerVerificationCard({ worker, isVerifiedTab, approving, onApprove, o
   const imageUrl = imageFilename
     ? imageFilename.startsWith("http")
       ? imageFilename
-      : `http://localhost:5000/uploads/${imageFilename.replace(/^\/uploads\//, "")}`
+      : `${API}/uploads/${imageFilename.replace(/^\/uploads\//, "")}`
     : null;
 
   const ocrText = worker.certificate?.qrPayload || worker.ocrExtractedText || worker.idOcrText;

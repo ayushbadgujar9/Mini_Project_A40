@@ -10,8 +10,9 @@ import DropdownMenu from '../../components/ui/DropdownMenu';
 import SegmentedTabs from '../../components/ui/SegmentedTabs';
 import StatChip from '../../components/ui/StatChip';
 import FairnessDrawer, { computeFairness, MAX_PROFILE_SCORE } from '../../components/FairnessDrawer';
+import API_BASE_URL from '../../config';
 
-const API = 'http://localhost:5000';
+const API = API_BASE_URL;
 
 // ── Skill catalogue ───────────────────────────────────────────────────────────
 const SKILLS = [

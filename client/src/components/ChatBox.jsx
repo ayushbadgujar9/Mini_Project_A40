@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import API_BASE_URL from '../config';
 
-const API = 'http://localhost:5000';
+const API = API_BASE_URL;
 const POLL_INTERVAL = 4000;   // 4 seconds
 const MAX_CHARS     = 1000;
 const NEAR_BOTTOM_THRESHOLD = 80; // px from bottom to trigger auto-scroll

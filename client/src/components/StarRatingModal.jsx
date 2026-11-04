@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_BASE_URL from '../config';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE = API_BASE_URL;
 
 const STAR_LABELS = {
   1: 'Poor · Needs Improvement',

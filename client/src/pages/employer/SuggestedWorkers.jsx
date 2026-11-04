@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import ChatDrawer, { ChatButton, useChatUnreadCounts } from '../../components/ChatDrawer';
 import StarRatingModal from '../../components/StarRatingModal';
+import API_BASE_URL from '../../config';
 
-
-const API = 'http://localhost:5000';
+const API = API_BASE_URL;
 
 const SKILLS = [
   { id: 'plumbing',    label: 'Plumbing',    icon: '🔧' },

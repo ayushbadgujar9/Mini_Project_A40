@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { checkSkillMatch, resolveJobSkill } from './JobMap';
+import API_BASE_URL from '../config';
 
 /**
  * JobCard Component (Clean Emerald / Mint Light Theme)
@@ -84,7 +85,7 @@ export default function JobCard({
     setApplying(true);
     setError(null);
     try {
-      const res = await fetch(`http://localhost:5000/api/applications/apply/${job._id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/applications/apply/${job._id}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });

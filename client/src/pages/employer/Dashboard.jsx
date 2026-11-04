@@ -9,8 +9,9 @@ import { Modal } from '../../components/ui/Overlay';
 import DropdownMenu from '../../components/ui/DropdownMenu';
 import SegmentedTabs from '../../components/ui/SegmentedTabs';
 import StatChip from '../../components/ui/StatChip';
+import API_BASE_URL from '../../config';
 
-const API = 'http://localhost:5000';
+const API = API_BASE_URL;
 
 // ── Skill catalogue — must stay in sync with Job model + CompleteProfile ──────
 const SKILLS = [

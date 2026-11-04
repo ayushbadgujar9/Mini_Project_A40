@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import JobCard from './JobCard';
 import JobMap from './JobMap';
 import SkillCategoryFilter from './SkillCategoryFilter';
-
-const API_BASE_URL = 'http://localhost:5000';
+import API_BASE_URL from '../config';
 
 // Standard radius presets requested by specification
 const RADIUS_OPTIONS = [
